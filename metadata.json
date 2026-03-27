@@ -1,0 +1,9 @@
+{
+  "name": "Learning Tech",
+  "description": "منصة تعليمية جزائرية احترافية للدروس الخصوصية، البث المباشر، والذكاء الاصطناعي مع دعم الدفع الإلكتروني.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
