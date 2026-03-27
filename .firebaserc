@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "learning-tech-530c7"
+    "primary": "learning-tech-14f73",
+    "secondary": "learning-tech-530c7",
+    "default": "learning-tech-14f73"
   }
 }

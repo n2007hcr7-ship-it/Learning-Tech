@@ -31,7 +31,9 @@ const secondaryConfig = {
   authDomain: import.meta.env.VITE_FIREBASE_SEC_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_SEC_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_SEC_STORAGE_BUCKET,
-  appId: import.meta.env.VITE_FIREBASE_SEC_APP_ID
+  messagingSenderId: import.meta.env.VITE_FIREBASE_SEC_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_SEC_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_SEC_MEASUREMENT_ID
 };
 
 // Initialize App Instances safely
