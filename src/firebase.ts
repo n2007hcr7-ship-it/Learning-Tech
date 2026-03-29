@@ -25,6 +25,16 @@ const primaryConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Diagnostic Logging for Build Errors
+if (import.meta.env.PROD) {
+  const key = primaryConfig.apiKey;
+  if (!key || key === 'undefined' || key.includes('VITE_FIREBASE_API_KEY')) {
+    console.error('[CRITICAL] VITE_FIREBASE_API_KEY is missing or incorrectly embedded in the production build.');
+  } else {
+    console.log(`[CONFIG] Primary API Key detected: ${key.substring(0, 4)}...${key.substring(key.length - 4)}`);
+  }
+}
+
 // --- Secondary Project Configuration (learning-tech-530c7) ---
 const secondaryConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_SEC_API_KEY,

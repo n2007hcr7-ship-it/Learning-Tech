@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نور بوك - Nour Book | متجر الكتب الإلكترونية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            box-sizing: border-box;
+        }
+        
+        .book-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .book-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .page-content {
+            display: none;
+        }
+        
+        .page-content.active {
+            display: block;
+        }
+        
+        .nav-link {
+            transition: color 0.3s ease;
+        }
+        
+        .nav-link:hover {
+            color: #667eea;
+        }
+        
+        .book-preview {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 10px 0;
+        }
+        
+        .preview-page {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-4 space-x-reverse">
+                    <div class="text-3xl">📚</div>
+                    <div>
+                        <h1 class="text-2xl font-bold">نور بوك</h1>
+                        <p class="text-sm opacity-90">Nour Book</p>
+                    </div>
+                </div>
+                
+                <nav class="hidden md:flex space-x-6 space-x-reverse">
+                    <a href="#" class="nav-link" onclick="showPage('home')">الرئيسية</a>
+                    <a href="#" class="nav-link" onclick="showPage('books')">الكتب</a>
+                    <a href="#" class="nav-link" onclick="showPage('about')">من نحن</a>
+                    <a href="#" class="nav-link" onclick="showPage('contact')">اتصل بنا</a>
+                </nav>
+                
+                <div class="flex items-center space-x-4 space-x-reverse">
+                    <button onclick="showPage('login')" class="bg-white text-purple-600 px-4 py-2 rounded-lg hover:bg-gray-100 transition">
+                        تسجيل الدخول
+                    </button>
+                    <div class="relative">
+                        <span class="bg-red-500 text-xs rounded-full px-2 py-1 absolute -top-2 -right-2">3</span>
+                        <button onclick="showPage('cart')" class="text-2xl">🛒</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Home Page -->
+    <div id="home" class="page-content active">
+        <!-- Hero Section -->
+        <section class="gradient-bg text-white py-20">
+            <div class="container mx-auto px-4 text-center">
+                <h2 class="text-5xl font-bold mb-6">اكتشف عالم المعرفة</h2>
+                <p class="text-xl mb-8 opacity-90">آلاف الكتب الإلكترونية باللغة العربية في متناول يدك</p>
+                <button onclick="showPage('books')" class="bg-white text-purple-600 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-100 transition">
+                    تصفح الكتب الآن
+                </button>
+            </div>
+        </section>
+
+        <!-- Featured Books -->
+        <section class="py-16">
+            <div class="container mx-auto px-4">
+                <h3 class="text-3xl font-bold text-center mb-12 text-gray-800">الكتب المميزة</h3>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="book-card bg-white rounded-lg shadow-lg overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=300&h=400&fit=crop" alt="كتاب الأدب العربي" class="w-full h-64 object-cover">
+                        <div class="p-6">
+                            <h4 class="text-xl font-bold mb-2">الأدب العربي الحديث</h4>
+                            <p class="text-gray-600 mb-4">دراسة شاملة للأدب العربي في العصر الحديث</p>
+                            <div class="flex justify-between items-center">
+                                <span class="text-2xl font-bold text-purple-600">1,200 دج</span>
+                                <button onclick="showBookPreview('book1')" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">
+                                    معاينة
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="book-card bg-white rounded-lg shadow-lg overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=300&h=400&fit=crop" alt="كتاب التاريخ الإسلامي" class="w-full h-64 object-cover">
+                        <div class="p-6">
+                            <h4 class="text-xl font-bold mb-2">التاريخ الإسلامي</h4>
+                            <p class="text-gray-600 mb-4">رحلة عبر التاريخ الإسلامي العريق</p>
+                            <div class="flex justify-between items-center">
+                                <span class="text-2xl font-bold text-purple-600">1,500 دج</span>
+                                <button onclick="showBookPreview('book2')" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">
+                                    معاينة
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="book-card bg-white rounded-lg shadow-lg overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=400&fit=crop" alt="كتاب الفلسفة" class="w-full h-64 object-cover">
+                        <div class="p-6">
+                            <h4 class="text-xl font-bold mb-2">مبادئ الفلسفة</h4>
+                            <p class="text-gray-600 mb-4">مقدمة شاملة لعلم الفلسفة والمنطق</p>
+                            <div class="flex justify-between items-center">
+                                <span class="text-2xl font-bold text-purple-600">900 دج</span>
+                                <button onclick="showBookPreview('book3')" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 transition">
+                                    معاينة
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Books Page -->
+    <div id="books" class="page-content">
+        <div class="container mx-auto px-4 py-8">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800">جميع الكتب</h2>
+            
+            <!-- Categories Filter -->
+            <div class="mb-8">
+                <div class="flex flex-wrap gap-3">
+                    <button onclick="filterBooks('all')" class="category-btn bg-purple-600 text-white px-4 py-2 rounded-lg transition">الكل</button>
+                    <button onclick="filterBooks('literature')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">الأدب</button>
+                    <button onclick="filterBooks('history')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">التاريخ</button>
+                    <button onclick="filterBooks('philosophy')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">الفلسفة</button>
+                    <button onclick="filterBooks('science')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">العلوم</button>
+                    <button onclick="filterBooks('astronomy')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">الفلك</button>
+                    <button onclick="filterBooks('power')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">السطوة والقوة</button>
+                    <button onclick="filterBooks('psychology')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">علم النفس</button>
+                    <button onclick="filterBooks('religion')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">الدين</button>
+                    <button onclick="filterBooks('business')" class="category-btn bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-purple-600 hover:text-white transition">الأعمال</button>
+                </div>
+            </div>
+
+            <!-- Books Grid -->
+            <div id="books-grid" class="grid md:grid-cols-4 gap-6">
+                <!-- Literature Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="literature">
+                    <img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=250&h=350&fit=crop" alt="كتاب الأدب العربي" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">الأدب العربي الحديث</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. محمد أحمد</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,200 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book1')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book1')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="literature">
+                    <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=250&h=350&fit=crop" alt="كتاب الشعر العربي" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">ديوان الشعر العربي</h4>
+                        <p class="text-sm text-gray-600 mb-2">مختارات من أعظم الشعراء</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">800 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book5')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book5')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="history">
+                    <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=250&h=350&fit=crop" alt="كتاب التاريخ الإسلامي" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">التاريخ الإسلامي</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. عبد الرحمن السيد</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,500 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book2')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book2')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="history">
+                    <img src="https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=250&h=350&fit=crop" alt="كتاب تاريخ الجزائر" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">تاريخ الجزائر المعاصر</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. مولود قاسم نايت بلقاسم</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,300 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book6')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book6')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Philosophy Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="philosophy">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=350&fit=crop" alt="كتاب الفلسفة" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">مبادئ الفلسفة</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. فاطمة الزهراء</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">900 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book3')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book3')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="philosophy">
+                    <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=250&h=350&fit=crop" alt="كتاب الفلسفة الإسلامية" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">الفلسفة الإسلامية</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. محمد عابد الجابري</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,400 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book7')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book7')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Science Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="science">
+                    <img src="https://images.unsplash.com/photo-1532012197267-da84d127e765?w=250&h=350&fit=crop" alt="كتاب الفيزياء" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">أساسيات الفيزياء الحديثة</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. أحمد زويل</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,600 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book8')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book8')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="science">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=350&fit=crop" alt="كتاب الكيمياء" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">الكيمياء العضوية</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. مصطفى السيد</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,200 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book9')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book9')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Astronomy Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="astronomy">
+                    <img src="https://images.unsplash.com/photo-1446776653964-20c1d3a81b06?w=250&h=350&fit=crop" alt="كتاب الفلك" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">علم الفلك والكون</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. فاروق الباز</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,800 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book10')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book10')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="astronomy">
+                    <img src="https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=250&h=350&fit=crop" alt="كتاب النجوم" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">رحلة إلى النجوم</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. نبيل فاروق</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,000 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book11')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book11')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Power & Leadership Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="power">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=350&fit=crop" alt="كتاب القوانين" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">قوانين السطوة الـ48</h4>
+                        <p class="text-sm text-gray-600 mb-2">روبرت غرين - مترجم</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">2,200 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book12')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book12')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="power">
+                    <img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=250&h=350&fit=crop" alt="كتاب القيادة" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">فن القيادة والتأثير</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. إبراهيم الفقي</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,500 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book13')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book13')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Psychology Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="psychology">
+                    <img src="https://images.unsplash.com/photo-1532012197267-da84d127e765?w=250&h=350&fit=crop" alt="كتاب علم النفس" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">علم النفس التربوي</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. أحمد محمود</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,100 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book4')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book4')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="psychology">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=350&fit=crop" alt="كتاب علم النفس الاجتماعي" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">علم النفس الاجتماعي</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. مصطفى سويف</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,300 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book14')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book14')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Religion Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="religion">
+                    <img src="https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=250&h=350&fit=crop" alt="كتاب التفسير" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">تفسير القرآن الكريم</h4>
+                        <p class="text-sm text-gray-600 mb-2">الشيخ محمد متولي الشعراوي</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">2,500 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book15')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book15')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="religion">
+                    <img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=250&h=350&fit=crop" alt="كتاب السيرة" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">السيرة النبوية</h4>
+                        <p class="text-sm text-gray-600 mb-2">ابن هشام</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,800 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book16')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book16')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Business Books -->
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="business">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=250&h=350&fit=crop" alt="كتاب ريادة الأعمال" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">ريادة الأعمال</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. طارق السويدان</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,700 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book17')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book17')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="book-item book-card bg-white rounded-lg shadow-lg overflow-hidden" data-category="business">
+                    <img src="https://images.unsplash.com/photo-1532012197267-da84d127e765?w=250&h=350&fit=crop" alt="كتاب الاستثمار" class="w-full h-48 object-cover">
+                    <div class="p-4">
+                        <h4 class="font-bold mb-2">أساسيات الاستثمار</h4>
+                        <p class="text-sm text-gray-600 mb-2">د. عبد الله العثيم</p>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-lg font-bold text-purple-600">1,400 دج</span>
+                            <div class="flex gap-2">
+                                <button onclick="showBookPreview('book18')" class="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600">معاينة</button>
+                                <button onclick="addToCart('book18')" class="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700">إضافة</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Page -->
+    <div id="login" class="page-content">
+        <div class="min-h-screen flex items-center justify-center py-12 px-4">
+            <div class="max-w-md w-full space-y-8">
+                <div class="text-center">
+                    <h2 class="text-3xl font-bold text-gray-900">تسجيل الدخول</h2>
+                    <p class="mt-2 text-gray-600">أدخل بياناتك للوصول إلى حسابك</p>
+                </div>
+                <form class="mt-8 space-y-6" onsubmit="handleLogin(event)">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">البريد الإلكتروني</label>
+                        <input type="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="example@email.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">كلمة المرور</label>
+                        <input type="password" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" placeholder="••••••••">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <label class="flex items-center">
+                            <input type="checkbox" class="rounded border-gray-300 text-purple-600 focus:ring-purple-500">
+                            <span class="mr-2 text-sm text-gray-600">تذكرني</span>
+                        </label>
+                        <a href="#" class="text-sm text-purple-600 hover:text-purple-500">نسيت كلمة المرور؟</a>
+                    </div>
+                    <button type="submit" class="w-full bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition font-medium">
+                        تسجيل الدخول
+                    </button>
+                    <div class="text-center">
+                        <span class="text-gray-600">ليس لديك حساب؟ </span>
+                        <a href="#" class="text-purple-600 hover:text-purple-500 font-medium">إنشاء حساب جديد</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart Page -->
+    <div id="cart" class="page-content">
+        <div class="container mx-auto px-4 py-8">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800">سلة التسوق</h2>
+            
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <div id="cart-items">
+                    <div class="text-center py-8">
+                        <div class="text-6xl mb-4">🛒</div>
+                        <h3 class="text-xl font-bold text-gray-600 mb-2">السلة فارغة</h3>
+                        <p class="text-gray-500 mb-4">لم تقم بإضافة أي كتب بعد</p>
+                        <button onclick="showPage('books')" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">
+                            تصفح الكتب
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="border-t pt-4" id="cart-summary" style="display: none;">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-xl font-bold">المجموع:</span>
+                        <span class="text-2xl font-bold text-purple-600">0 دج</span>
+                    </div>
+                    <button onclick="showPage('checkout')" class="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition font-medium">
+                        متابعة الشراء
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Page -->
+    <div id="checkout" class="page-content">
+        <div class="container mx-auto px-4 py-8">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800">إتمام الشراء</h2>
+            
+            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+                <strong>تنبيه:</strong> هذه صفحة تجريبية - لا يتم معالجة المدفوعات الحقيقية
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-bold mb-4">معلومات الفوترة</h3>
+                    <form onsubmit="handleCheckout(event)">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">الاسم الكامل</label>
+                                <input type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">البريد الإلكتروني</label>
+                                <input type="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">رقم الهاتف</label>
+                                <input type="tel" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            </div>
+                        </div>
+                        
+                        <h4 class="text-lg font-bold mt-6 mb-4">طريقة الدفع</h4>
+                        <div class="space-y-3">
+                            <label class="flex items-center">
+                                <input type="radio" name="payment" value="ccp" class="text-purple-600 focus:ring-purple-500">
+                                <span class="mr-2">الدفع عبر CCP</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="payment" value="baridimob" class="text-purple-600 focus:ring-purple-500">
+                                <span class="mr-2">بريدي موب BaridiMob</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="payment" value="edahabia" class="text-purple-600 focus:ring-purple-500">
+                                <span class="mr-2">الذهبية Edahabia</span>
+                            </label>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 transition font-medium mt-6">
+                            تأكيد الطلب
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h3 class="text-xl font-bold mb-4">ملخص الطلب</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span>الأدب العربي الحديث</span>
+                            <span>1,200 دج</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>التاريخ الإسلامي</span>
+                            <span>1,500 دج</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>مبادئ الفلسفة</span>
+                            <span>900 دج</span>
+                        </div>
+                        <hr>
+                        <div class="flex justify-between font-bold text-lg">
+                            <span>المجموع:</span>
+                            <span class="text-purple-600">3,600 دج</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Book Preview Modal -->
+    <div id="book-preview-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-screen overflow-y-auto">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-2xl font-bold" id="preview-title">معاينة الكتاب</h3>
+                    <button onclick="closeBookPreview()" class="text-gray-500 hover:text-gray-700 text-2xl">×</button>
+                </div>
+                
+                <div id="preview-content" class="book-preview">
+                    <!-- Preview content will be loaded here -->
+                </div>
+                
+                <div class="mt-6 flex justify-center space-x-4 space-x-reverse">
+                    <button onclick="closeBookPreview()" class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600">
+                        إغلاق
+                    </button>
+                    <button onclick="addToCartFromPreview()" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">
+                        إضافة للسلة
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Page -->
+    <div id="about" class="page-content">
+        <div class="container mx-auto px-4 py-8">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800 text-center">من نحن</h2>
+            
+            <div class="max-w-4xl mx-auto">
+                <div class="bg-white rounded-lg shadow-lg p-8 mb-8">
+                    <h3 class="text-2xl font-bold mb-4 text-purple-600">نور بوك - Nour Book</h3>
+                    <p class="text-lg text-gray-700 leading-relaxed mb-6">
+                        نور بوك هو متجرك الإلكتروني المتخصص في بيع الكتب الإلكترونية باللغة العربية. نهدف إلى نشر المعرفة والثقافة العربية من خلال توفير مكتبة رقمية شاملة تضم آلاف العناوين في مختلف المجالات.
+                    </p>
+                    
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h4 class="text-xl font-bold mb-3 text-purple-600">رؤيتنا</h4>
+                            <p class="text-gray-700">
+                                أن نكون المنصة الرائدة في العالم العربي لتوزيع الكتب الإلكترونية، ونساهم في بناء مجتمع قارئ ومثقف.
+                            </p>
+                        </div>
+                        
+                        <div>
+                            <h4 class="text-xl font-bold mb-3 text-purple-600">مهمتنا</h4>
+                            <p class="text-gray-700">
+                                توفير وصول سهل وميسور للكتب العربية الإلكترونية، ودعم المؤلفين والناشرين العرب في نشر أعمالهم.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-lg shadow-lg p-6 text-center">
+                        <div class="text-4xl mb-4">📚</div>
+                        <h4 class="text-xl font-bold mb-2">مكتبة شاملة</h4>
+                        <p class="text-gray-600">آلاف الكتب في مختلف المجالات</p>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow-lg p-6 text-center">
+                        <div class="text-4xl mb-4">💳</div>
+                        <h4 class="text-xl font-bold mb-2">دفع آمن</h4>
+                        <p class="text-gray-600">طرق دفع متنوعة وآمنة</p>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow-lg p-6 text-center">
+                        <div class="text-4xl mb-4">📱</div>
+                        <h4 class="text-xl font-bold mb-2">قراءة سهلة</h4>
+                        <p class="text-gray-600">متوافق مع جميع الأجهزة</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Page -->
+    <div id="contact" class="page-content">
+        <div class="container mx-auto px-4 py-8">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800 text-center">اتصل بنا</h2>
+            
+            <div class="max-w-4xl mx-auto">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">تواصل معنا</h3>
+                        <form onsubmit="handleContact(event)">
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">الاسم</label>
+                                    <input type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">البريد الإلكتروني</label>
+                                    <input type="email" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">الموضوع</label>
+                                    <input type="text" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">الرسالة</label>
+                                    <textarea rows="4" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+                                </div>
+                                <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
+                                    إرسال الرسالة
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow-lg p-6">
+                        <h3 class="text-xl font-bold mb-4">معلومات التواصل</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center space-x-3 space-x-reverse">
+                                <span class="text-2xl">📧</span>
+                                <div>
+                                    <p class="font-medium">البريد الإلكتروني</p>
+                                    <p class="text-gray-600">info@nourbook.dz</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 space-x-reverse">
+                                <span class="text-2xl">📞</span>
+                                <div>
+                                    <p class="font-medium">الهاتف</p>
+                                    <p class="text-gray-600">+213 555 123 456</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 space-x-reverse">
+                                <span class="text-2xl">📍</span>
+                                <div>
+                                    <p class="font-medium">العنوان</p>
+                                    <p class="text-gray-600">الجزائر العاصمة، الجزائر</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-3 space-x-reverse">
+                                <span class="text-2xl">🕒</span>
+                                <div>
+                                    <p class="font-medium">ساعات العمل</p>
+                                    <p class="text-gray-600">الأحد - الخميس: 9:00 - 17:00</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-6">
+                            <h4 class="font-bold mb-3">تابعنا على</h4>
+                            <div class="flex space-x-4 space-x-reverse">
+                                <a href="#" class="text-2xl hover:text-purple-600">📘</a>
+                                <a href="#" class="text-2xl hover:text-purple-600">📷</a>
+                                <a href="#" class="text-2xl hover:text-purple-600">🐦</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8 mt-16">
+        <div class="container mx-auto px-4">
+            <div class="grid md:grid-cols-4 gap-8">
+                <div>
+                    <h4 class="text-xl font-bold mb-4">نور بوك</h4>
+                    <p class="text-gray-300">متجرك الإلكتروني للكتب العربية</p>
+                </div>
+                
+                <div>
+                    <h5 class="font-bold mb-3">روابط سريعة</h5>
+                    <ul class="space-y-2 text-gray-300">
+                        <li><a href="#" onclick="showPage('home')" class="hover:text-white">الرئيسية</a></li>
+                        <li><a href="#" onclick="showPage('books')" class="hover:text-white">الكتب</a></li>
+                        <li><a href="#" onclick="showPage('about')" class="hover:text-white">من نحن</a></li>
+                        <li><a href="#" onclick="showPage('contact')" class="hover:text-white">اتصل بنا</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h5 class="font-bold mb-3">الفئات</h5>
+                    <ul class="space-y-2 text-gray-300">
+                        <li><a href="#" class="hover:text-white">الأدب</a></li>
+                        <li><a href="#" class="hover:text-white">التاريخ</a></li>
+                        <li><a href="#" class="hover:text-white">الفلسفة</a></li>
+                        <li><a href="#" class="hover:text-white">العلوم</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h5 class="font-bold mb-3">تواصل معنا</h5>
+                    <p class="text-gray-300 mb-2">info@nourbook.dz</p>
+                    <p class="text-gray-300">+213 555 123 456</p>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-300">
+                <p>&copy; 2024 نور بوك - Nour Book. جميع الحقوق محفوظة.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        let cart = [];
+        let currentPreviewBook = null;
+        let allBooks = {}; // Will store all book data
+
+        function showPage(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page-content');
+            pages.forEach(page => page.classList.remove('active'));
+            
+            // Show selected page
+            document.getElementById(pageId).classList.add('active');
+            
+            // Scroll to top
+            window.scrollTo(0, 0);
+        }
+
+        function filterBooks(category) {
+            const bookItems = document.querySelectorAll('.book-item');
+            const categoryButtons = document.querySelectorAll('.category-btn');
+            
+            // Update button styles
+            categoryButtons.forEach(btn => {
+                btn.classList.remove('bg-purple-600', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-700');
+            });
+            
+            event.target.classList.remove('bg-gray-200', 'text-gray-700');
+            event.target.classList.add('bg-purple-600', 'text-white');
+            
+            // Filter books
+            bookItems.forEach(book => {
+                if (category === 'all' || book.dataset.category === category) {
+                    book.style.display = 'block';
+                } else {
+                    book.style.display = 'none';
+                }
+            });
+        }
+
+        function showBookPreview(bookId) {
+            const books = {
+                'book1': {
+                    title: 'الأدب العربي الحديث',
+                    author: 'د. محمد أحمد',
+                    price: '1,200 دج',
+                    pages: [
+                        {
+                            title: 'المقدمة',
+                            content: 'يعتبر الأدب العربي الحديث من أهم المراحل في تاريخ الأدب العربي، حيث شهد تطورات جذرية في الشكل والمضمون. بدأت هذه المرحلة مع النهضة العربية في القرن التاسع عشر، وتأثرت بالاحتكاك مع الثقافات الأوروبية والترجمة من اللغات الأجنبية.'
+                        },
+                        {
+                            title: 'الفصل الأول: بدايات النهضة',
+                            content: 'شهدت بدايات القرن التاسع عشر ظهور رواد النهضة الأدبية أمثال رفاعة الطهطاوي وأحمد فارس الشدياق، الذين ساهموا في تجديد اللغة العربية وإدخال أشكال أدبية جديدة. كان لحملة نابليون على مصر أثر كبير في إحداث هذا التغيير الثقافي.'
+                        },
+                        {
+                            title: 'الفصل الثاني: المدارس الأدبية',
+                            content: 'تنوعت المدارس الأدبية في العصر الحديث بين الكلاسيكية الجديدة والرومانسية والواقعية. كل مدرسة جاءت بخصائصها المميزة وأساليبها الفنية الخاصة، مما أثرى الساحة الأدبية العربية بتنوع لم تشهده من قبل.'
+                        }
+                    ]
+                },
+                'book2': {
+                    title: 'التاريخ الإسلامي',
+                    author: 'د. عبد الرحمن السيد',
+                    price: '1,500 دج',
+                    pages: [
+                        {
+                            title: 'مقدمة في التاريخ الإسلامي',
+                            content: 'يمتد التاريخ الإسلامي عبر أربعة عشر قرناً من الزمان، بدءاً من بعثة النبي محمد صلى الله عليه وسلم في القرن السابع الميلادي. هذا التاريخ العريق يحمل في طياته قصص الحضارة والعلم والفتوحات والإنجازات العظيمة.'
+                        },
+                        {
+                            title: 'عصر الخلفاء الراشدين',
+                            content: 'بعد وفاة النبي صلى الله عليه وسلم، تولى الخلفاء الراشدون الأربعة قيادة الأمة الإسلامية. أبو بكر الصديق، عمر بن الخطاب، عثمان بن عفان، وعلي بن أبي طالب، كل منهم ترك بصمة واضحة في التاريخ الإسلامي.'
+                        },
+                        {
+                            title: 'الدولة الأموية',
+                            content: 'تأسست الدولة الأموية عام 661م على يد معاوية بن أبي سفيان، واتخذت من دمشق عاصمة لها. امتدت هذه الدولة من الأندلس غرباً إلى حدود الصين شرقاً، وشهدت فترة توسع كبير ونهضة عمرانية.'
+                        }
+                    ]
+                },
+                'book3': {
+                    title: 'مبادئ الفلسفة',
+                    author: 'د. فاطمة الزهراء',
+                    price: '900 دج',
+                    pages: [
+                        {
+                            title: 'ما هي الفلسفة؟',
+                            content: 'الفلسفة هي حب الحكمة والبحث عن الحقيقة من خلال التفكير العقلي والتأمل. تهتم الفلسفة بالأسئلة الأساسية حول الوجود والمعرفة والأخلاق والجمال. إنها محاولة لفهم العالم والإنسان ومكانته في هذا الكون.'
+                        },
+                        {
+                            title: 'تاريخ الفلسفة',
+                            content: 'بدأت الفلسفة في اليونان القديمة مع فلاسفة مثل سقراط وأفلاطون وأرسطو. ثم انتقلت إلى الحضارة الإسلامية حيث ازدهرت على يد الكندي والفارابي وابن سينا وابن رشد. واستمرت في التطور عبر العصور حتى وصلت إلى الفلسفة المعاصرة.'
+                        },
+                        {
+                            title: 'فروع الفلسفة',
+                            content: 'تنقسم الفلسفة إلى عدة فروع رئيسية: الميتافيزيقا (دراسة الوجود)، نظرية المعرفة (كيف نعرف؟)، الأخلاق (ما هو الصواب والخطأ؟)، علم الجمال (طبيعة الجمال والفن)، والمنطق (قواعد التفكير الصحيح).'
+                        }
+                    ]
+                }
+            };
+
+            const book = books[bookId];
+            if (!book) return;
+
+            currentPreviewBook = bookId;
+            document.getElementById('preview-title').textContent = book.title;
+            
+            const previewContent = document.getElementById('preview-content');
+            previewContent.innerHTML = `
+                <div class="mb-6">
+                    <h4 class="text-xl font-bold text-purple-600 mb-2">${book.title}</h4>
+                    <p class="text-gray-600 mb-2">المؤلف: ${book.author}</p>
+                    <p class="text-lg font-bold text-purple-600">السعر: ${book.price}</p>
+                </div>
+                
+                <div class="space-y-4">
+                    ${book.pages.map(page => `
+                        <div class="preview-page">
+                            <h5 class="font-bold text-lg mb-3 text-purple-600">${page.title}</h5>
+                            <p class="text-gray-700 leading-relaxed">${page.content}</p>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-blue-800 text-center">
+                        <strong>هذه معاينة مجانية للكتاب</strong><br>
+                        للحصول على النسخة الكاملة، يرجى شراء الكتاب
+                    </p>
+                </div>
+            `;
+            
+            document.getElementById('book-preview-modal').classList.remove('hidden');
+            document.getElementById('book-preview-modal').classList.add('flex');
+        }
+
+        function closeBookPreview() {
+            document.getElementById('book-preview-modal').classList.add('hidden');
+            document.getElementById('book-preview-modal').classList.remove('flex');
+            currentPreviewBook = null;
+        }
+
+        function addToCart(bookId) {
+            const books = {
+                'book1': { title: 'الأدب العربي الحديث', price: 1200, author: 'د. محمد أحمد' },
+                'book2': { title: 'التاريخ الإسلامي', price: 1500, author: 'د. عبد الرحمن السيد' },
+                'book3': { title: 'مبادئ الفلسفة', price: 900, author: 'د. فاطمة الزهراء' },
+                'book4': { title: 'علم النفس التربوي', price: 1100, author: 'د. أحمد محمود' },
+                'book5': { title: 'ديوان الشعر العربي', price: 800, author: 'مختارات من أعظم الشعراء' },
+                'book6': { title: 'تاريخ الجزائر المعاصر', price: 1300, author: 'د. مولود قاسم نايت بلقاسم' },
+                'book7': { title: 'الفلسفة الإسلامية', price: 1400, author: 'د. محمد عابد الجابري' },
+                'book8': { title: 'أساسيات الفيزياء الحديثة', price: 1600, author: 'د. أحمد زويل' },
+                'book9': { title: 'الكيمياء العضوية', price: 1200, author: 'د. مصطفى السيد' },
+                'book10': { title: 'علم الفلك والكون', price: 1800, author: 'د. فاروق الباز' },
+                'book11': { title: 'رحلة إلى النجوم', price: 1000, author: 'د. نبيل فاروق' },
+                'book12': { title: 'قوانين السطوة الـ48', price: 2200, author: 'روبرت غرين - مترجم' },
+                'book13': { title: 'فن القيادة والتأثير', price: 1500, author: 'د. إبراهيم الفقي' },
+                'book14': { title: 'علم النفس الاجتماعي', price: 1300, author: 'د. مصطفى سويف' },
+                'book15': { title: 'تفسير القرآن الكريم', price: 2500, author: 'الشيخ محمد متولي الشعراوي' },
+                'book16': { title: 'السيرة النبوية', price: 1800, author: 'ابن هشام' },
+                'book17': { title: 'ريادة الأعمال', price: 1700, author: 'د. طارق السويدان' },
+                'book18': { title: 'أساسيات الاستثمار', price: 1400, author: 'د. عبد الله العثيم' }
+            };
+
+            if (books[bookId] && !cart.find(item => item.id === bookId)) {
+                cart.push({ id: bookId, ...books[bookId] });
+                updateCartCount();
+                updateCartDisplay();
+                showNotification('تم إضافة الكتاب إلى السلة بنجاح!');
+            } else if (cart.find(item => item.id === bookId)) {
+                showNotification('هذا الكتاب موجود بالفعل في السلة!');
+            }
+        }
+
+        function removeFromCart(bookId) {
+            cart = cart.filter(item => item.id !== bookId);
+            updateCartCount();
+            updateCartDisplay();
+            showNotification('تم حذف الكتاب من السلة');
+        }
+
+        function updateCartDisplay() {
+            const cartItemsContainer = document.getElementById('cart-items');
+            const cartSummary = document.getElementById('cart-summary');
+            const books = {
+                'book1': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=80&h=100&fit=crop',
+                'book2': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=80&h=100&fit=crop',
+                'book3': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=100&fit=crop',
+                'book4': 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=80&h=100&fit=crop',
+                'book5': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=80&h=100&fit=crop',
+                'book6': 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=80&h=100&fit=crop',
+                'book7': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=80&h=100&fit=crop',
+                'book8': 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=80&h=100&fit=crop',
+                'book9': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=100&fit=crop',
+                'book10': 'https://images.unsplash.com/photo-1446776653964-20c1d3a81b06?w=80&h=100&fit=crop',
+                'book11': 'https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=80&h=100&fit=crop',
+                'book12': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=100&fit=crop',
+                'book13': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=80&h=100&fit=crop',
+                'book14': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=100&fit=crop',
+                'book15': 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=80&h=100&fit=crop',
+                'book16': 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=80&h=100&fit=crop',
+                'book17': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=100&fit=crop',
+                'book18': 'https://images.unsplash.com/photo-1532012197267-da84d127e765?w=80&h=100&fit=crop'
+            };
+
+            if (cart.length === 0) {
+                cartItemsContainer.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="text-6xl mb-4">🛒</div>
+                        <h3 class="text-xl font-bold text-gray-600 mb-2">السلة فارغة</h3>
+                        <p class="text-gray-500 mb-4">لم تقم بإضافة أي كتب بعد</p>
+                        <button onclick="showPage('books')" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">
+                            تصفح الكتب
+                        </button>
+                    </div>
+                `;
+                cartSummary.style.display = 'none';
+            } else {
+                cartItemsContainer.innerHTML = cart.map(item => `
+                    <div class="flex items-center justify-between border-b pb-4 mb-4">
+                        <div class="flex items-center space-x-4 space-x-reverse">
+                            <img src="${books[item.id]}" alt="${item.title}" class="w-16 h-20 object-cover rounded">
+                            <div>
+                                <h4 class="font-bold">${item.title}</h4>
+                                <p class="text-gray-600">${item.author}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4 space-x-reverse">
+                            <span class="text-lg font-bold text-purple-600">${item.price.toLocaleString()} دج</span>
+                            <button onclick="removeFromCart('${item.id}')" class="text-red-500 hover:text-red-700 text-xl">🗑️</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                cartSummary.style.display = 'block';
+                
+                // Update total
+                const total = cart.reduce((sum, item) => sum + item.price, 0);
+                const totalElement = cartSummary.querySelector('.text-2xl.font-bold.text-purple-600');
+                if (totalElement) {
+                    totalElement.textContent = `${total.toLocaleString()} دج`;
+                }
+            }
+        }
+
+        // Initialize cart display when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCartDisplay();
+        });
+
+        function addToCartFromPreview() {
+            if (currentPreviewBook) {
+                addToCart(currentPreviewBook);
+                closeBookPreview();
+            }
+        }
+
+        function updateCartCount() {
+            const cartCount = document.querySelector('.bg-red-500');
+            if (cartCount) {
+                cartCount.textContent = cart.length;
+            }
+        }
+
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        function handleLogin(event) {
+            event.preventDefault();
+            showNotification('تم تسجيل الدخول بنجاح!');
+            showPage('home');
+        }
+
+        function handleCheckout(event) {
+            event.preventDefault();
+            showNotification('تم تأكيد طلبك بنجاح! سيتم التواصل معك قريباً.');
+            cart = [];
+            updateCartCount();
+            showPage('home');
+        }
+
+        function handleContact(event) {
+            event.preventDefault();
+            showNotification('تم إرسال رسالتك بنجاح! سنرد عليك في أقرب وقت.');
+            event.target.reset();
+        }
+
+        // Close modal when clicking outside
+        document.getElementById('book-preview-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeBookPreview();
+            }
+        });
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9865d994b611b6ca',t:'MTc1OTA4OTg2Ny4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
