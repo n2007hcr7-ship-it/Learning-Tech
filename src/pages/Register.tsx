@@ -99,6 +99,7 @@ const Register = () => {
       });
       navigate('/profile');
     } catch (error: any) {
+      console.error("DEBUG AUTH ERROR:", error);
       toast.error('فشل إنشاء الحساب: ' + (error.message || 'خطأ غير معروف'));
     } finally {
       setLoading(false);
