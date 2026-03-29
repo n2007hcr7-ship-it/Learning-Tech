@@ -54,14 +54,14 @@ const appSecondary = getApps().find(app => app.name === 'secondary') || initiali
 // --------------------------------------------------------------------------
 
 // Firestore is now hosted on the SECONDARY account (530c7)
-export const db        = getFirestore(appSecondary);
+export const db = getFirestore(appSecondary);
 
 // Realtime Database remains on the PRIMARY account (14f73)
-export const rtdb      = getDatabase(appPrimary);
+export const rtdb = getDatabase(appPrimary);
 
 // Auth, Storage, and Functions remain on the PRIMARY account (14f73)
-export const auth      = getAuth(appPrimary);
-export const storage   = getStorage(appPrimary);
+export const auth = getAuth(appPrimary);
+export const storage = getStorage(appPrimary);
 export const functions = getFunctions(appPrimary);
 
 // Operation Types for Error Handling
