@@ -19,7 +19,9 @@ import {
   Download,
   CheckCircle2,
   AlertCircle,
-  Trophy
+  Trophy,
+  MapPin,
+  Phone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
@@ -274,14 +276,26 @@ export default function App() {
     }
   };
 
+  const [onboardingData, setOnboardingData] = useState({
+    wilaya: 'الجزائر العاصمة',
+    phone: ''
+  });
+
   const selectRole = async (role: 'student' | 'teacher') => {
     if (!user) return;
+    
+    if (!onboardingData.phone || onboardingData.phone.length < 9) {
+      toast.error('يرجى إدخال رقم هاتف صحيح');
+      return;
+    }
+
     const initialProfile = {
       id: user.id,
       name: user.user_metadata?.display_name || user.email,
       email: user.email,
       role: role,
-      wilaya: 'الجزائر',
+      wilaya: onboardingData.wilaya,
+      phone: onboardingData.phone,
       balance: 0,
       iq_coins: 0,
       iq_coins_monthly: 0,
@@ -293,6 +307,7 @@ export default function App() {
         await supabase.from('teachers').insert({
           id: user.id,
           name: user.user_metadata?.display_name || user.email,
+          wilaya: onboardingData.wilaya,
           is_verified: false,
           balance: 0,
         });
@@ -300,7 +315,9 @@ export default function App() {
         await supabase.from('students').insert({
           id: user.id,
           name: user.user_metadata?.display_name || user.email,
+          wilaya: onboardingData.wilaya,
           balance: 0,
+          iq_coins: 0,
           is_subscribed: false
         });
       }
@@ -339,6 +356,15 @@ export default function App() {
     );
   }
 
+  const algerianWilayas = [
+    "أدرار", "الشلف", "الأغواط", "أم البواقي", "باتنة", "بجاية", "بسكرة", "بشار", "البليدة", "البويرة", 
+    "تمنراست", "تبسة", "تلمسان", "تيارت", "تيزي وزو", "الجزائر العاصمة", "الجلفة", "جيجل", "سطيف", "سعيدة", 
+    "سكيكدة", "سيدي بلعباس", "عنابة", "قالمة", "قسنطينة", "المدية", "مستغانم", "المسيلة", "معسكر", "ورقلة", 
+    "وهران", "البيض", "إليزي", "برج بوعريريج", "بومرداس", "الطارف", "تندوف", "تيسمسيلت", "الوادي", "خنشلة", 
+    "سوق أهراس", "تيبازة", "ميلة", "عين الدفلى", "النعامة", "عين تموشنت", "غرداية", "غليزان", "تيميمون", 
+    "برج باجي مختار", "أولاد جلال", "بني عباس", "عين صالح", "عين قزام", "تقرت", "جانت", "المغير", "المنيعة"
+  ];
+
   return (
     <ErrorBoundary>
       <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
@@ -350,38 +376,73 @@ export default function App() {
             <AnimatePresence>
               {profile?.needsRole && (
                 <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="fixed inset-0 z-[100] bg-brand-navy/80 backdrop-blur-sm flex items-center justify-center p-4"
+                   initial={{ opacity: 0 }}
+                   animate={{ opacity: 1 }}
+                   className="fixed inset-0 z-[100] bg-brand-navy/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
                 >
                   <motion.div 
                     initial={{ scale: 0.9, y: 20 }}
                     animate={{ scale: 1, y: 0 }}
-                    className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl"
+                    className="bg-white rounded-[2.5rem] p-8 md:p-10 max-w-lg w-full text-center shadow-2xl my-auto"
                   >
-                    <Zap className="w-12 h-12 text-brand-green mx-auto mb-6" />
-                    <h2 className="text-2xl font-bold mb-2">مرحباً بك في Learning Tech</h2>
-                    <p className="text-gray-500 mb-8">يرجى اختيار نوع حسابك للمتابعة</p>
+                    <div className="bg-brand-green/10 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-8">
+                      <Zap className="w-10 h-10 text-brand-green" />
+                    </div>
                     
-                    <div className="grid grid-cols-2 gap-4">
-                      <button 
-                        onClick={() => selectRole('student')}
-                        className="group p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-green hover:bg-brand-green/5 transition-all"
-                      >
-                        <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-brand-green group-hover:text-white transition-all">
-                          <User className="w-6 h-6" />
-                        </div>
-                        <span className="font-bold">أنا تلميذ</span>
-                      </button>
-                      <button 
-                        onClick={() => selectRole('teacher')}
-                        className="group p-6 rounded-2xl border-2 border-gray-100 hover:border-brand-green hover:bg-brand-green/5 transition-all"
-                      >
-                        <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-brand-green group-hover:text-white transition-all">
-                          <Award className="w-6 h-6" />
-                        </div>
-                        <span className="font-bold">أنا أستاذ</span>
-                      </button>
+                    <h2 className="text-3xl font-black text-brand-navy mb-2">خطوة أخيرة مكتملة! 🎉</h2>
+                    <p className="text-gray-500 mb-8 text-sm">أهلاً بك {user?.user_metadata?.display_name || user?.email}، أكمل بياناتك للمتابعة.</p>
+                    
+                    <div className="space-y-6 text-right" dir="rtl">
+                      {/* Wilaya Selection */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-500 mr-2 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> ولايتك
+                        </label>
+                        <select 
+                          value={onboardingData.wilaya}
+                          onChange={(e) => setOnboardingData({...onboardingData, wilaya: e.target.value})}
+                          className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-brand-green"
+                        >
+                          {algerianWilayas.map(w => <option key={w} value={w}>{w}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Phone Selection */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-500 mr-2 flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> رقم الهاتف
+                        </label>
+                        <input 
+                          type="tel"
+                          placeholder="06XXXXXXXX"
+                          value={onboardingData.phone}
+                          onChange={(e) => setOnboardingData({...onboardingData, phone: e.target.value})}
+                          className="w-full bg-gray-50 border-none rounded-2xl px-4 py-4 text-sm focus:ring-2 focus:ring-brand-green"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 pt-4">
+                        <button 
+                          onClick={() => selectRole('student')}
+                          className="group p-6 rounded-[2rem] border-2 border-gray-100 hover:border-brand-green hover:bg-brand-green/5 transition-all text-center"
+                        >
+                          <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:bg-brand-green group-hover:text-white transition-all">
+                            <User className="w-6 h-6" />
+                          </div>
+                          <span className="font-black text-sm block">أنا تلميذ</span>
+                          <span className="text-[10px] text-gray-400">للدراسة والتعلم</span>
+                        </button>
+                        <button 
+                          onClick={() => selectRole('teacher')}
+                          className="group p-6 rounded-[2rem] border-2 border-gray-100 hover:border-brand-green hover:bg-brand-green/5 transition-all text-center"
+                        >
+                          <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:bg-brand-green group-hover:text-white transition-all">
+                            <Award className="w-6 h-6" />
+                          </div>
+                          <span className="font-black text-sm block">أنا أستاذ</span>
+                          <span className="text-[10px] text-gray-400">لتقديم الدروس</span>
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 </motion.div>

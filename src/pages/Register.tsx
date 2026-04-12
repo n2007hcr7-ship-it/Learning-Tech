@@ -134,6 +134,26 @@ const Register = () => {
             <p className="text-gray-500 text-sm">أكبر منصة تعليمية في الجزائر بانتظارك</p>
           </div>
 
+          <div className="mb-10 space-y-4">
+            <button 
+              onClick={async () => {
+                const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+                if (error) toast.error('فشل التسجيل بجوجل');
+              }}
+              className="w-full py-4 rounded-2xl border-2 border-brand-green/20 bg-brand-green/5 font-bold text-sm flex items-center justify-center gap-3 hover:bg-brand-green/10 transition-all text-brand-navy shadow-sm"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              حساب جديد بضغطة واحدة عبر Google
+            </button>
+
+            <div className="relative flex items-center justify-center py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-100"></div>
+              </div>
+              <span className="relative px-4 bg-white text-[10px] text-gray-400 font-bold uppercase tracking-widest">أو الطريقة التقليدية</span>
+            </div>
+          </div>
+
           {step === 1 ? (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-center mb-8">اختر نوع الحساب</h2>
