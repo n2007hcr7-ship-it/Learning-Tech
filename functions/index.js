@@ -168,7 +168,13 @@ exports.chargilyWebhook = onRequest(
 
     // ── 2. التحقق من التوقيع (HMAC-SHA256) ───────────────
     const signature = req.headers["signature"];
-    const rawBody   = JSON.stringify(req.body);
+    const rawBody   = req.rawBody; // استخدام البيانات الخام لضمان التطابق مع التوقيع
+
+    if (!rawBody) {
+      console.error("❌ Chargily webhook: لا توجد بيانات خام (rawBody)!");
+      res.status(400).send("Missing body");
+      return;
+    }
 
     const expectedSig = crypto
       .createHmac("sha256", getChargilyKey())
@@ -180,6 +186,7 @@ exports.chargilyWebhook = onRequest(
       res.status(401).send("Invalid signature");
       return;
     }
+
 
     // ── 3. معالجة الحدث ───────────────────────────────────
     const event = req.body;
@@ -452,20 +459,108 @@ exports.awardLessonPoint = onCall(async (request) => {
 });
 
 // ================================================================
-// 4. spendPoints — Callable HTTPS Function
+// 4. processServicePayment (DZD) — Callable HTTPS Function
 // ================================================================
+/**
+ * يُستدعى للتجارة الداخلية للمنصة (بالدينار الجزائري).
+ * يخصم من رصيد التلميذ ويوزع الأرباح:
+ * 2% (Chargily) | 70% من الصافي للأستاذ | 30% من الصافي للمنصة
+ */
+exports.processServicePayment = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+
+  const uid = request.auth.uid;
+  const { amount, reason, teacherId } = request.data;
+
+  const VALID_REASONS = ["live_stream", "normal_chat", "premium_chat", "subscription"];
+  if (!reason || !VALID_REASONS.includes(reason)) {
+    throw new HttpsError("invalid-argument", "سبب الدفع غير معرّف.");
+  }
+
+  const userRef = db.collection("users").doc(uid);
+
+  return await db.runTransaction(async (tx) => {
+    let actualAmount = amount;
+    let teacherRef = null;
+    let teacherUserRef = null;
+
+    if (teacherId) {
+      teacherRef = db.collection("teachers").doc(teacherId);
+      teacherUserRef = db.collection("users").doc(teacherId);
+      const teacherSnap = await tx.get(teacherRef);
+      if (teacherSnap.exists) {
+        const pricing = teacherSnap.data().pricing || {};
+        // تطبيق الأسعار الديناميكية مع الحدود الدنيا من السيرفر للأمان
+        if (reason === "normal_chat") actualAmount = Math.max(Number(pricing.normalChat || 300), 300);
+        if (reason === "premium_chat") actualAmount = Math.max(Number(pricing.premiumChat || 1000), 1000);
+        if (reason === "subscription") actualAmount = Number(pricing.subscription || 0);
+      }
+    }
+
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists) throw new HttpsError("not-found", "المستخدم غير موجود.");
+
+    const currentBalance = userSnap.data().balance || 0;
+    if (currentBalance < actualAmount) {
+      throw new HttpsError(
+        "resource-exhausted",
+        `رصيدك غير كافٍ. لديك ${currentBalance} دج، المطلوب ${actualAmount} دج.`
+      );
+    }
+
+    const studentRef = db.collection("students").doc(uid);
+    tx.update(userRef,    { balance: FieldValue.increment(-actualAmount), lastActivityAt: FieldValue.serverTimestamp() });
+    tx.update(studentRef, { balance: FieldValue.increment(-actualAmount) });
+
+    const txRef = db.collection("balanceTransactions").doc();
+    tx.set(txRef, {
+      userId: uid, type: "spend", amount: -actualAmount, reason,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    if (teacherId && teacherRef && teacherUserRef) {
+      // الحساب الرياضي الدقيق (70/30 من نسبة الـ 98% المتبقية)
+      const chargilyFee = actualAmount * 0.02;
+      const netAmount = actualAmount - chargilyFee;
+      
+      const teacherEarning = parseFloat((netAmount * 0.70).toFixed(2));
+      const platformCommission = parseFloat((netAmount * 0.30).toFixed(2));
+
+      tx.set(teacherRef, { balance: FieldValue.increment(teacherEarning) }, { merge: true });
+      tx.set(teacherUserRef, { balance: FieldValue.increment(teacherEarning) }, { merge: true });
+
+      const earningRef = db.collection("earnings").doc();
+      tx.set(earningRef, {
+        teacherId: teacherId,
+        studentId: uid,
+        originalAmount: actualAmount,
+        chargilyFee: chargilyFee,
+        earnedAmount: teacherEarning, // حصة الأستاذ (70%)
+        platformCommission: platformCommission, // حصتك (30%)
+        reason: reason,
+        createdAt: FieldValue.serverTimestamp()
+      });
+    }
+
+    return { success: true, balance: currentBalance - actualAmount };
+  });
+});
+
+// ================================================================
+// 5. spendPoints (Bonus/Rewards System) — Callable HTTPS Function
+// ================================================================
+/**
+ * يُستخدم فقط لاستبدال النقاط (المكافآت) التي كسبها التلميذ من الدروس.
+ * لا يوزع أرباحاً مالية حقيقية بل يفتح الخدمة كـ "هدية" (Bonus).
+ */
 exports.spendPoints = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
 
   const uid = request.auth.uid;
-  const { amount, reason } = request.data;
+  const { amount, reason, teacherId } = request.data;
 
   if (!amount || typeof amount !== "number" || amount <= 0) {
-    throw new HttpsError("invalid-argument", "المبلغ غير صالح.");
-  }
-  const VALID_REASONS = ["live_stream", "normal_chat", "premium_chat"];
-  if (!reason || !VALID_REASONS.includes(reason)) {
-    throw new HttpsError("invalid-argument", "سبب الإنفاق غير معرّف.");
+    throw new HttpsError("invalid-argument", "عدد النقاط غير صالح.");
   }
 
   const userRef = db.collection("users").doc(uid);
@@ -476,24 +571,56 @@ exports.spendPoints = onCall(async (request) => {
 
     const currentPoints = userSnap.data().points || 0;
     if (currentPoints < amount) {
-      throw new HttpsError(
-        "resource-exhausted",
-        `رصيدك غير كافٍ. لديك ${currentPoints} نقطة، المطلوب ${amount}.`
-      );
+      throw new HttpsError("resource-exhausted", "رصيد نقاطك غير كافٍ.");
     }
 
     const studentRef = db.collection("students").doc(uid);
-    tx.update(userRef,    { points: FieldValue.increment(-amount), lastActivityAt: FieldValue.serverTimestamp() });
+    tx.update(userRef,    { points: FieldValue.increment(-amount) });
     tx.update(studentRef, { points: FieldValue.increment(-amount) });
 
     const txRef = db.collection("pointsTransactions").doc();
     tx.set(txRef, {
-      userId: uid, type: "spend", amount: -amount, reason,
+      userId: uid, type: "spend_bonus", amount: -amount, reason,
       createdAt: FieldValue.serverTimestamp(),
     });
 
     return { success: true, points: currentPoints - amount };
   });
+});
+
+// ================================================================
+// 6. deleteUserAccount — Callable HTTPS Function
+// ================================================================
+/**
+ * يحذف الحساب نهائياً من الـ Auth ومن Firestore.
+ * لا يمكن استرداد الحساب أو الرصيد بعد هذا الإجراء.
+ */
+exports.deleteUserAccount = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "يجب تسجيل الدخول أولاً.");
+  
+  const uid = request.auth.uid;
+
+  try {
+    // 1. حذف البيانات من Firestore
+    const userRef    = db.collection("users").doc(uid);
+    const teacherRef = db.collection("teachers").doc(uid);
+    const studentRef = db.collection("students").doc(uid);
+
+    const batch = db.batch();
+    batch.delete(userRef);
+    batch.delete(teacherRef);
+    batch.delete(studentRef);
+    
+    await batch.commit();
+
+    // 2. حذف المستخدم من Firebase Auth
+    await admin.auth().deleteUser(uid);
+
+    return { success: true, message: "تم حذف الحساب بنجاح." };
+  } catch (error) {
+    console.error("Account deletion error:", error);
+    throw new HttpsError("internal", "حدث خطأ أثناء محاولة حذف الحساب.");
+  }
 });
 
 // ================================================================

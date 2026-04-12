@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Video, Mic, MicOff, VideoOff, MessageCircle, Users, Zap, Disc, Send, Loader2, Play, Timer } from 'lucide-react';
+import { Video, Mic, MicOff, VideoOff, MessageCircle, Users, Zap, Disc, Send, Loader2, Play, Timer, CreditCard } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ref, push, onValue, query as rtdbQuery, limitToLast, serverTimestamp as rtdbTimestamp, update } from 'firebase/database';
-import { rtdb, db, functions } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
 import { toast } from 'sonner';
 import AgoraRTC, { IAgoraRTCClient, ICameraVideoTrack, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 
@@ -26,11 +23,17 @@ const LiveRoom = () => {
   // ── Session State Logic ──────────────────────────────────────
   useEffect(() => {
     if (!roomId) return;
-    const sessionRef = ref(rtdb, `liveStreams/${roomId}`);
-    const unsubscribe = onValue(sessionRef, (snapshot) => {
-      setSession(snapshot.val());
-    });
-    return () => unsubscribe();
+    const fetchSession = async () => {
+      const { data } = await supabase.from('live_streams').select('*').eq('id', roomId).single();
+      if (data) setSession(data);
+    };
+    fetchSession();
+    const channel = supabase.channel(`live_stream_${roomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_streams', filter: `id=eq.${roomId}` }, () => {
+        fetchSession();
+      }).subscribe();
+      
+    return () => { supabase.removeChannel(channel); }
   }, [roomId]);
 
   const startBroadcast = async () => {
@@ -38,13 +41,13 @@ const LiveRoom = () => {
     try {
       setAgoraLoading(true);
       
-      // 1. دفع تكاليف البث من رصيد الأستاذ
-      const payForAgoraStream = httpsCallable(functions, 'payForAgoraStream');
-      await payForAgoraStream({ 
-        roomId, 
-        duration: session.duration || 60, 
-        maxAttendees: session.maxAttendees || 50 
+      // 1. دفع تكاليف البث من رصيد الأستاذ باستخدام RPC
+      const { data: rpcData, error: rpcError } = await supabase.rpc('pay_for_agora_stream', { 
+        p_room_id: roomId, 
+        p_duration: session.duration || 60, 
+        p_max_attendees: session.maxAttendees || 50 
       });
+      if (rpcError) throw rpcError;
 
       // 2. تفعيل خدمة Agora
       await initAgora();
@@ -87,19 +90,30 @@ const LiveRoom = () => {
   }, [profile, roomId]);
 
   // ── Payment Handler ─────────────────────────────────────────
+  const livePrice = session?.price || 0;
+
   const handlePayEntry = async () => {
     if (!user || !profile) return;
-    if ((profile?.points || 0) < 25) {
-      toast.error('رصيد نقاطك غير كافٍ. تحتاج إلى 25 نقطة.');
+    if ((profile?.balance || 0) < livePrice) {
+      toast.error(`رصيد محفظتك غير كافٍ. تحتاج إلى ${livePrice} دج لدخول البث.`);
       return;
     }
     setProcessingPayment(true);
     try {
-      const spendPoints = httpsCallable(functions, 'spendPoints');
-      await spendPoints({ amount: 25, reason: 'live_stream' });
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, { unlockedLiveStreams: arrayUnion(roomId) });
-      toast.success('تم الدفع بنجاح، جاري الدخول...');
+      const { data: rpcData, error: rpcError } = await supabase.rpc('process_service_payment', { 
+        p_amount: livePrice, 
+        p_reason: 'live_stream', 
+        p_teacher_id: session?.teacherId || session?.teacher_id 
+      });
+      if (rpcError) throw rpcError;
+      
+      const { data: userData } = await supabase.from('users').select('unlocked_live_streams').eq('id', user.id).single();
+      const unlockedLiveStreams = userData?.unlocked_live_streams || [];
+      if (!unlockedLiveStreams.includes(roomId)) {
+        await supabase.from('users').update({ unlocked_live_streams: [...unlockedLiveStreams, roomId] }).eq('id', user.id);
+      }
+      
+      toast.success(`تم خصم ${livePrice} دج بنجاح، جاري الدخول...`);
       setHasAccess(true);
     } catch (error: any) {
       toast.error('فشل معالجة الدفع');
@@ -118,10 +132,12 @@ const LiveRoom = () => {
       agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
       setClient(agoraClient);
 
-      // 1. الحصول على التوكن من الخادم
-      const getAgoraToken = httpsCallable<{ channelName: string; uid: number }, { token: string }>(functions, 'getAgoraToken');
+      // 1. الحصول على التوكن من الخادم (Edge Function)
       const uid = Math.floor(Math.random() * 1000000); // معرف رقمي لـ Agora
-      const { data } = await getAgoraToken({ channelName: roomId, uid });
+      const { data, error } = await supabase.functions.invoke('get-agora-token', {
+        body: { channelName: roomId, uid }
+      });
+      if (error) throw error;
 
       // 2. الانضمام للقناة
       await agoraClient.join(AGORA_APP_ID, roomId, data.token, uid);
@@ -172,21 +188,28 @@ const LiveRoom = () => {
     if (!hasAccess || !user) return;
 
     // بالنسبة للتلاميذ: ينضمون تلقائياً إذا كان البث مباشراً ومتاحاً
+    const changeViewersCount = async (delta: number) => {
+      const { data } = await supabase.from('live_streams').select('viewers').eq('id', roomId).single();
+      if (data) {
+        await supabase.from('live_streams').update({ viewers: Math.max(0, data.viewers + delta) }).eq('id', roomId);
+      }
+    };
+
     if (profile?.role === 'student' && session?.status === 'live') {
       const currentViewers = session.viewers || 0;
-      const maxAttendees   = session.maxAttendees || 50;
+      const maxAttendees   = session.maxAttendees || session.max_attendees || 50;
 
       if (currentViewers < maxAttendees) {
         initAgora();
-        // زيادة عدد المشاهدين في RTDB
-        update(ref(rtdb, `liveStreams/${roomId}`), { viewers: currentViewers + 1 });
+        // زيادة عدد المشاهدين
+        changeViewersCount(1);
       }
     }
 
     return () => {
       // تنظيف الموارد عند مغادرة الغرفة
       if (profile?.role === 'student' && session?.status === 'live') {
-        update(ref(rtdb, `liveStreams/${roomId}`), { viewers: Math.max(0, (session.viewers || 1) - 1) });
+        changeViewersCount(-1);
       }
       localAudioTrack?.stop();
       localAudioTrack?.close();
@@ -218,25 +241,37 @@ const LiveRoom = () => {
 
   useEffect(() => {
     if (!roomId) return;
-    const messagesRef = rtdbQuery(ref(rtdb, `liveComments/${roomId}`), limitToLast(100));
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
+    const fetchMessages = async () => {
+      const { data } = await supabase.from('live_comments').select('*').eq('room_id', roomId).order('created_at', { ascending: true }).limit(100);
       if (data) {
-        setMessages(Object.keys(data).map(key => ({ id: key, ...data[key] })));
+        setMessages(data.map((msg: any) => ({
+          id: msg.id,
+          text: msg.text,
+          userName: msg.user_name || msg.userName,
+          role: msg.role,
+          createdAt: msg.created_at || msg.createdAt
+        })));
         setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       }
-    });
-    return () => unsubscribe();
+    };
+    fetchMessages();
+    const commentChannel = supabase.channel(`live_comments_${roomId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_comments', filter: `room_id=eq.${roomId}` }, () => {
+        fetchMessages();
+      }).subscribe();
+
+    return () => { supabase.removeChannel(commentChannel); }
   }, [roomId]);
 
   const handleSendMessage = async () => {
     if (!message.trim() || !user) return;
-    await push(ref(rtdb, `liveComments/${roomId}`), {
+    await supabase.from('live_comments').insert({
+      room_id: roomId,
       text: message,
-      userId: user.uid,
-      userName: profile?.name || user.displayName || 'تلميذ',
+      user_id: user.id,
+      user_name: profile?.name || user.email || 'تلميذ',
       role: profile?.role || 'student',
-      createdAt: rtdbTimestamp()
+      created_at: new Date().toISOString()
     });
     setMessage('');
   };
@@ -245,15 +280,15 @@ const LiveRoom = () => {
     return (
       <div className="min-h-screen bg-brand-navy flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-[40px] p-8 max-w-md w-full text-center shadow-2xl">
-          <Zap className="w-16 h-16 text-brand-gold mx-auto mb-6" />
+          <CreditCard className="w-16 h-16 text-brand-green mx-auto mb-6" />
           <h2 className="text-2xl font-bold mb-4 text-brand-navy">الدخول للبث المباشر</h2>
-          <p className="text-gray-500 mb-8">تحتاج إلى 25 نقطة لمشاهدة هذا البث المباشر.</p>
+          <p className="text-gray-500 mb-8">تحتاج إلى {livePrice} دج من رصيد محفظتك لمشاهدة هذا البث.</p>
           <button 
             onClick={handlePayEntry}
-            disabled={processingPayment || (profile?.points || 0) < 25}
+            disabled={processingPayment || (profile?.balance || 0) < livePrice}
             className="w-full py-4 rounded-2xl bg-brand-navy text-white font-bold disabled:bg-gray-200"
           >
-            {processingPayment ? 'جاري المعالجة...' : 'دفع 25 نقطة والدخول'}
+            {processingPayment ? 'جاري المعالجة...' : `دفع ${livePrice} دج والدخول`}
           </button>
         </motion.div>
       </div>

@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, GraduationCap, Users, Mail, Lock, Phone, MapPin, ArrowRight, CheckCircle2 } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { supabase } from '../supabase';
 import { toast } from 'sonner';
 
 const Register = () => {
@@ -46,52 +44,59 @@ const Register = () => {
     
     setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      const user = userCredential.user;
-
-      await updateProfile(user, { displayName: formData.name });
-
-      // Create profile in Firestore
-      const userRef = doc(db, 'users', user.uid);
-      await setDoc(userRef, {
-        uid: user.uid,
-        displayName: formData.name,
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
-        phone: formData.phone,
+        password: formData.password,
+        options: {
+          data: {
+            display_name: formData.name,
+          }
+        }
+      });
+      
+      if (authError) throw authError;
+      if (!authData.user) throw new Error('فشل إنشاء الحساب');
+      
+      const user = authData.user;
+
+      // Create profile in Supabase public.users
+      const { error: userError } = await supabase.from('users').insert({
+        id: user.id,
+        name: formData.name,
+        email: formData.email,
         wilaya: formData.wilaya,
         role: role,
         balance: 0,
-        points: 0,
-        createdAt: serverTimestamp()
+        iq_coins: 0,
+        iq_coins_monthly: 0
       });
+      if (userError) throw userError;
 
       // If teacher, create teacher profile
       if (role === 'teacher') {
-        const teacherRef = doc(db, 'teachers', user.uid);
-        await setDoc(teacherRef, {
-          uid: user.uid,
+        const { error: teacherError } = await supabase.from('teachers').insert({
+          id: user.id,
           name: formData.name,
           wilaya: formData.wilaya,
-          isVerified: false,
+          is_verified: false,
           balance: 0,
-          totalStudents: 0,
+          total_students: 0,
           rating: 5,
           ccp: '',
-          edahabia: '',
-          createdAt: serverTimestamp()
+          edahabia: ''
         });
+        if (teacherError) throw teacherError;
       } else {
         // If student, create student profile
-        const studentRef = doc(db, 'students', user.uid);
-        await setDoc(studentRef, {
-          uid: user.uid,
+        const { error: studentError } = await supabase.from('students').insert({
+          id: user.id,
           name: formData.name,
           wilaya: formData.wilaya,
           balance: 0,
-          points: 0,
-          isSubscribed: false,
-          createdAt: serverTimestamp()
+          iq_coins: 0,
+          is_subscribed: false
         });
+        if (studentError) throw studentError;
       }
 
       toast.success('تم إنشاء الحساب بنجاح!', {

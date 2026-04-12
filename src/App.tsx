@@ -18,30 +18,13 @@ import {
   Zap,
   Download,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Trophy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Toaster, toast } from 'sonner';
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
-  signOut,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  collection, 
-  query, 
-  where, 
-  onSnapshot,
-  serverTimestamp,
-  increment
-} from 'firebase/firestore';
-import { ref, onValue, push, set, serverTimestamp as rtdbTimestamp } from 'firebase/database';
-import { auth, db, rtdb, handleFirestoreError, OperationType } from './firebase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 
 import HomePage from './pages/Home';
 import LessonsPage from './pages/Lessons';
@@ -57,11 +40,12 @@ import PaymentsPage from './pages/Payments';
 import PointsPage from './pages/PointsPage';
 import Register from './pages/Register';
 import Login from './pages/Login';
+import Leaderboard from './pages/Leaderboard';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // --- Contexts ---
 const AuthContext = createContext<{
-  user: FirebaseUser | null;
+  user: SupabaseUser | null;
   profile: any | null;
   loading: boolean;
   login: () => Promise<void>;
@@ -88,11 +72,12 @@ const Navbar = () => {
     { name: 'شات عادية', path: '/chats', icon: MessageCircle },
     { name: 'شات مميزة', path: '/chats/premium', icon: Zap },
     { name: 'الأرشيف', path: '/archive', icon: ShieldCheck },
+    { name: 'لوحة الشرف', path: '/leaderboard', icon: Trophy },
     ...(profile?.role === 'teacher' ? [{ name: 'لوحة التحكم', path: '/dashboard', icon: Zap }] : []),
     { name: 'حسابي', path: '/profile', icon: User },
   ];
 
-  const pointsCount = profile?.points || 0;
+  const pointsCount = profile?.iq_coins_monthly || 0;
 
   return (
     <nav className="bg-brand-navy text-white sticky top-0 z-50 shadow-lg">
@@ -131,18 +116,26 @@ const Navbar = () => {
               <div className="flex items-center gap-3">
                 {/* Points Badge */}
                 <Link
-                  to="/points"
+                  to="/payments"
+                  className="hidden sm:flex items-center gap-1.5 bg-brand-green/15 hover:bg-brand-green/25 text-brand-green px-3 py-1.5 rounded-xl text-xs font-black transition-all"
+                >
+                  <CreditCard className="w-4 h-4" />
+                  {profile?.balance || 0} دج
+                </Link>
+                {/* Points Badge */}
+                <Link
+                  to="/leaderboard"
                   className="hidden sm:flex items-center gap-1.5 bg-brand-gold/15 hover:bg-brand-gold/25 text-brand-gold px-3 py-1.5 rounded-xl text-xs font-black transition-all"
                 >
                   <Award className="w-4 h-4" />
-                  {pointsCount} نقطة
+                  {pointsCount} IQ
                 </Link>
                 <div className="hidden sm:flex flex-col items-end">
                   <span className="text-xs font-medium text-brand-gold">
                     {profile?.role === 'teacher' ? 'أستاذ' : 'تلميذ'}
                   </span>
                   <span className="text-sm font-bold truncate max-w-[100px]">
-                    {user.displayName}
+                    {user.user_metadata?.display_name || user.email}
                   </span>
                 </div>
                 <button 
@@ -237,63 +230,78 @@ const Navbar = () => {
 // --- Main App Component ---
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      try {
-        setUser(firebaseUser);
-        if (firebaseUser) {
-          const docRef = doc(db, 'users', firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            setProfile(docSnap.data());
-          } else {
-            // Role will be selected by user in a modal if not exists
-            setProfile({ needsRole: true });
-          }
-        } else {
-          setProfile(null);
-        }
-      } catch (error) {
-        console.error('Auth state error:', error);
-      } finally {
-        setLoading(false);
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
     });
-    return () => unsubscribe();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleSession = async (session: any) => {
+    try {
+      if (session?.user) {
+        setUser(session.user);
+        const { data: profileData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profileData) {
+          setProfile(profileData);
+        } else {
+          setProfile({ needsRole: true });
+        }
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+    } catch (error) {
+      console.error('Auth state error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selectRole = async (role: 'student' | 'teacher') => {
     if (!user) return;
     const initialProfile = {
-      uid: user.uid,
-      name: user.displayName,
+      id: user.id,
+      name: user.user_metadata?.display_name || user.email,
       email: user.email,
       role: role,
       wilaya: 'الجزائر',
       balance: 0,
-      points: 0,
-      createdAt: serverTimestamp(),
+      iq_coins: 0,
+      iq_coins_monthly: 0,
+      createdAt: new Date().toISOString(),
     };
     try {
-      await setDoc(doc(db, 'users', user.uid), initialProfile);
-      // Also create specific profile in teachers/students collection
+      await supabase.from('users').insert(initialProfile);
       if (role === 'teacher') {
-        await setDoc(doc(db, 'teachers', user.uid), {
-          name: user.displayName,
-          isVerified: false,
+        await supabase.from('teachers').insert({
+          id: user.id,
+          name: user.user_metadata?.display_name || user.email,
+          is_verified: false,
           balance: 0,
-          createdAt: serverTimestamp(),
         });
       } else {
-        await setDoc(doc(db, 'students', user.uid), {
-          name: user.displayName,
+        await supabase.from('students').insert({
+          id: user.id,
+          name: user.user_metadata?.display_name || user.email,
           balance: 0,
-          points: 0,
-          createdAt: serverTimestamp(),
+          is_subscribed: false
         });
       }
       setProfile(initialProfile);
@@ -304,10 +312,8 @@ export default function App() {
   };
 
   const login = async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
-      toast.success('تم تسجيل الدخول بنجاح');
+      await supabase.auth.signInWithOAuth({ provider: 'google' });
     } catch (error) {
       toast.error('فشل تسجيل الدخول');
     }
@@ -315,7 +321,7 @@ export default function App() {
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       toast.success('تم تسجيل الخروج');
     } catch (error) {
       toast.error('فشل تسجيل الخروج');
@@ -399,6 +405,7 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/points" element={<PointsPage />} />
                 <Route path="/parent-reports" element={<div className="p-20 text-center font-bold">تقارير الأولياء قريباً</div>} />
+                <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/ai-features" element={<div className="p-20 text-center font-bold">ميزات الذكاء الاصطناعي قريباً</div>} />
                 <Route path="/certificates" element={<div className="p-20 text-center font-bold">الشهادات قريباً</div>} />
 

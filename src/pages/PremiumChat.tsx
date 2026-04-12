@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, User, Clock, Zap, Bell, ShieldCheck, ChevronRight, Search, Plus, X } from 'lucide-react';
+import { MessageCircle, Send, User, Clock, Zap, Bell, ShieldCheck, ChevronRight, Search, Plus, X, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-// 1. استدعاءات Realtime Database (للرسائل اللحظية)
-import { ref, push, onValue, query as rtdbQuery, limitToLast, serverTimestamp as rtdbTimestamp } from 'firebase/database';
-
-// 2. استدعاءات Firestore (لحفظ إعدادات الغرف)
-import { collection, addDoc, query as firestoreQuery, orderBy, onSnapshot, serverTimestamp as firestoreTimestamp, where, doc, updateDoc, getDocs, limit } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-
-import { db, rtdb, functions, handleFirestoreError, OperationType } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 
 const PremiumChat = () => {
@@ -23,47 +16,67 @@ const PremiumChat = () => {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [subscribedTeacherIds, setSubscribedTeacherIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const selectedChat = chats.find(c => c.id === selectedChatId);
 
-  // جلب المحادثات المميزة
+  // جلب المحادثات المميزة من Supabase
   useEffect(() => {
     if (!user || !profile) return;
 
-    const chatRef = collection(db, 'chats');
-    const q = firestoreQuery(
-      chatRef,
-      where('participants', 'array-contains', user.uid),
-      where('type', '==', 'premium'), // المحادثات المميزة فقط
-      orderBy('updatedAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setChats(chatsData);
+    const fetchChats = async () => {
+      const { data, error } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('type', 'premium')
+        .contains('participants', [user.id])
+        .order('updatedAt', { ascending: false });
+        
+      if (!error && data) {
+        setChats(data);
+      }
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'chats');
-      setLoading(false);
-    });
+    };
 
-    return unsubscribe;
+    fetchChats();
+
+    const channel = supabase.channel('realtime_premium_chats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chats', filter: `participants=cs.{${user.id}}` }, (payload) => {
+        fetchChats();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user, profile]);
 
-  // جلب الأساتذة للقائمة المنبثقة
+  // جلب الأساتذة للقائمة المنبثقة من Supabase
   useEffect(() => {
     if (showNewChatModal) {
-      const fetchTeachers = async () => {
-        const q = firestoreQuery(collection(db, 'teachers'), limit(20));
-        const snapshot = await getDocs(q);
-        setTeachers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      };
-      fetchTeachers();
-    }
-  }, [showNewChatModal]);
+      if (profile?.role === 'student' && user?.id) {
+        const fetchSubscriptions = async () => {
+          const { data } = await supabase.from('subscriptions').select('teacherId').eq('studentId', user.id);
+          if (data) {
+            setSubscribedTeacherIds(data.map((sub: any) => sub.teacherId));
+          }
+        };
+        fetchSubscriptions();
+      }
 
-  // جلب الرسائل وعرضها عبر Realtime Database لسرعة تفاعل قصوى ⚡
+      const fetchTeachers = async () => {
+        const { data } = await supabase.from('teachers').select('*').limit(50);
+        if (data) {
+          setTeachers(data);
+        }
+      };
+      
+      fetchTeachers();
+      setSearchTerm('');
+    }
+  }, [showNewChatModal, user?.id, profile?.role]);
+
+  // جلب الرسائل وعرضها عبر Supabase اللحظية ⚡
   useEffect(() => {
     if (!selectedChatId) {
       setMessages([]);
@@ -71,29 +84,27 @@ const PremiumChat = () => {
     }
 
     setMessagesLoading(true);
-    const messagesRef = rtdbQuery(ref(rtdb, `messages/${selectedChatId}`), limitToLast(50));
-
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
+    const fetchMessages = async () => {
+      const { data } = await supabase.from('messages').select('*').eq('chatId', selectedChatId).order('createdAt', { ascending: true }).limit(50);
       if (data) {
-        const messageList = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        }));
-        setMessages(messageList);
-      } else {
-        setMessages([]);
+        setMessages(data);
       }
       setMessagesLoading(false);
       setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
-    }, (error) => {
-      console.error('Error fetching RTDB messages:', error);
-      setMessagesLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchMessages();
+
+    const channel = supabase.channel('realtime_premium_messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chatId=eq.${selectedChatId}` }, (payload) => {
+        setMessages((prev) => [...prev, payload.new as any]);
+        setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [selectedChatId]);
 
   const handleSend = async () => {
@@ -103,24 +114,21 @@ const PremiumChat = () => {
       const msgData = {
         chatId: selectedChat.id,
         text: message,
-        senderId: user.uid,
-        senderName: user.displayName || (profile?.role === 'teacher' ? 'أستاذ' : 'تلميذ مميز'),
+        senderId: user.id,
+        senderName: profile?.name || user.user_metadata?.display_name || (profile?.role === 'teacher' ? 'أستاذ' : 'تلميذ مميز'),
         teacherId: selectedChat.teacherId,
         studentId: selectedChat.studentId,
         isPremium: true,
-        createdAt: rtdbTimestamp(), // الوقت بتقنية RTDB
+        createdAt: new Date().toISOString(),
       };
 
-      // الدفع الفوري لقاعدة Realtime
-      await push(ref(rtdb, `messages/${selectedChatId}`), msgData);
+      await supabase.from('messages').insert(msgData);
       
-      // تحديث آخر رسالة في Firestore
-      await updateDoc(doc(db, 'chats', selectedChat.id), {
+      await supabase.from('chats').update({
         lastMessage: message,
-        updatedAt: firestoreTimestamp()
-      });
+        updatedAt: new Date().toISOString()
+      }).eq('id', selectedChat.id);
 
-      // إبقاء إشعار النجاح الجميل للطلاب
       if (profile?.role === 'student') {
         toast.success('تم إرسال إشعار فوري وقوي للأستاذ!', {
           icon: <Zap className="w-5 h-5 text-brand-gold" />,
@@ -144,40 +152,39 @@ const PremiumChat = () => {
       return;
     }
 
-    // --- نظام الدفع بالنقاط للمحادثة المميزة ---
+    const price = teacher.pricing?.premiumChat || 1000;
+
     if (profile.role === 'student' && !profile.isSubscribed) {
-      if ((profile.points || 0) < 250) {
-        toast.error('تحتاج إلى 250 نقطة أو اشتراك فعّال لفتح محادثة مميزة.');
+      if ((profile.balance || 0) < price) {
+        toast.error(`تحتاج إلى ${price} دج أو اشتراك فعّال لفتح محادثة مميزة.`);
         return;
       }
       try {
-        // استدعاء دالة الخادم الآمنة بدلاً من الكتابة المباشرة
-        const spendPoints = httpsCallable(functions, 'spendPoints');
-        await spendPoints({ amount: 250, reason: 'premium_chat' });
-        toast.success('تم خصم 250 نقطة لفتح المحادثة المميزة! ⚡');
+        const { error } = await supabase.rpc('process_service_payment', { amount: price, reason: 'premium_chat', teacher_id: teacher.id });
+        if (error) throw error;
+        toast.success(`تم خصم ${price} دج من رصيدك لفتح المحادثة المميزة! ⚡`);
       } catch (e: any) {
-        const msg = e?.message?.includes('resource-exhausted')
-          ? 'رصيدك غير كافِ. أكمل المزيد من الدروس لتجميع النقاط.'
-          : 'حدث خطأ أثناء معالجة الدفع';
-        toast.error(msg);
+        toast.error('رصيدك في المحفظة غير كافِ أو حدث خطأ.');
         return;
       }
     }
 
     try {
       const chatData = {
-        participants: [user.uid, teacher.id],
-        studentId: user.uid,
+        participants: [user.id, teacher.id],
+        studentId: user.id,
         teacherId: teacher.id,
         studentName: profile.name || 'تلميذ',
-        teacherName: teacher.name || 'أستاذ',
+        teacherName: teacher.name || teacher.users?.name || 'أستاذ',
         type: 'premium',
-        updatedAt: firestoreTimestamp(),
+        updatedAt: new Date().toISOString(),
         lastMessage: ''
       };
 
-      const docRef = await addDoc(collection(db, 'chats'), chatData);
-      setSelectedChatId(docRef.id);
+      const { data, error } = await supabase.from('chats').insert(chatData).select().single();
+      if (error) throw error;
+      
+      setSelectedChatId(data.id);
       setShowNewChatModal(false);
     } catch (error) {
       console.error('Error starting chat:', error);
@@ -205,9 +212,10 @@ const PremiumChat = () => {
               {profile?.role === 'student' && (
                 <button 
                   onClick={() => setShowNewChatModal(true)}
-                  className="p-2 bg-brand-gold text-brand-navy rounded-xl hover:bg-brand-gold/90 transition-all"
+                  className="px-4 py-2 bg-brand-gold text-brand-navy rounded-xl hover:bg-brand-gold/90 transition-all flex items-center gap-2 text-sm font-bold"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="w-4 h-4" />
+                  إنشاء محادثة مميزة
                 </button>
               )}
             </div>
@@ -309,14 +317,14 @@ const PremiumChat = () => {
                   </div>
                 ) : (
                   messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`flex ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}>
                       <div className={`p-4 rounded-3xl shadow-sm max-w-[80%] ${
-                        msg.senderId === user?.uid 
+                        msg.senderId === user?.id 
                           ? 'bg-brand-gold text-brand-navy rounded-tl-none' 
                           : 'bg-white text-brand-navy rounded-tr-none border border-gray-100'
                       } ring-1 ring-brand-gold/10`}>
                         <p className="text-sm leading-relaxed font-medium">{msg.text}</p>
-                        <div className={`text-[9px] mt-2 flex items-center gap-1 ${msg.senderId === user?.uid ? 'text-brand-navy/60' : 'text-gray-400'}`}>
+                        <div className={`text-[9px] mt-2 flex items-center gap-1 ${msg.senderId === user?.id ? 'text-brand-navy/60' : 'text-gray-400'}`}>
                           <Clock className="w-3 h-3" />
                           {msg.createdAt 
                             ? new Date(msg.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' }) 
@@ -403,25 +411,56 @@ const PremiumChat = () => {
                   <X className="w-6 h-6" />
                 </button>
               </div>
+              <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="ابحث عن أستاذ (الاسم أو المادة)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white border border-brand-gold/20 rounded-xl pr-10 py-2.5 text-sm focus:ring-2 focus:ring-brand-gold focus:border-brand-gold transition-all outline-none"
+                  />
+                </div>
+              </div>
               <div className="p-4 max-h-[400px] overflow-y-auto space-y-2">
                 {teachers.length === 0 ? (
                   <p className="text-center py-10 text-gray-400">لا يوجد أساتذة متاحون حالياً</p>
                 ) : (
-                  teachers.map(teacher => (
+                  teachers
+                    .filter(t => t.name?.toLowerCase().includes(searchTerm.toLowerCase()) || t.subject?.includes(searchTerm))
+                    .sort((a, b) => {
+                      const aSub = subscribedTeacherIds.includes(a.id) ? 1 : 0;
+                      const bSub = subscribedTeacherIds.includes(b.id) ? 1 : 0;
+                      return bSub - aSub; // Show subscribed teachers first
+                    })
+                    .map(teacher => {
+                    const isSubscribed = subscribedTeacherIds.includes(teacher.id);
+                    return (
                     <button
                       key={teacher.id}
                       onClick={() => startNewChat(teacher)}
-                      className="w-full p-4 rounded-2xl flex items-center gap-4 hover:bg-brand-gold/5 transition-all border border-transparent hover:border-brand-gold/20"
+                      className={`w-full p-4 rounded-2xl flex items-center gap-4 transition-all border ${isSubscribed ? 'bg-brand-gold/10 border-brand-gold/30 hover:bg-brand-gold/20' : 'hover:bg-brand-gold/5 border-transparent'}`}
                     >
-                      <div className="w-12 h-12 rounded-xl bg-brand-gold/10 flex items-center justify-center text-brand-gold font-bold text-lg">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${isSubscribed ? 'bg-brand-gold text-brand-navy' : 'bg-brand-gold/10 text-brand-gold'}`}>
                         {teacher.name?.[0]}
                       </div>
-                      <div className="text-right">
-                        <h4 className="font-bold text-brand-navy">{teacher.name}</h4>
+                      <div className="text-right flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-brand-navy">{teacher.name}</h4>
+                          {isSubscribed && (
+                           <span className="text-[10px] bg-brand-gold text-brand-navy px-2 py-0.5 rounded-full font-bold">مشترك</span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500">{teacher.subject}</p>
                       </div>
+                      <div className="font-bold text-sm text-brand-gold flex items-center gap-1 bg-white shadow-sm border border-brand-gold/20 px-3 py-1.5 rounded-xl">
+                        <CreditCard className="w-4 h-4" />
+                        {teacher.pricing?.premiumChat || 1000} دج
+                      </div>
                     </button>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </motion.div>

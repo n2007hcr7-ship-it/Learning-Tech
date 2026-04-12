@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Lock, LogIn, ArrowRight, Zap } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 import { toast } from 'sonner';
 
 const Login = () => {
@@ -16,7 +15,11 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
       toast.success('تم تسجيل الدخول بنجاح!');
       navigate('/profile');
     } catch (error: any) {
@@ -27,11 +30,12 @@ const Login = () => {
   };
 
   const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
-      toast.success('تم تسجيل الدخول بجوجل بنجاح!');
-      navigate('/profile');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
+      if (error) throw error;
+      // Note: Supabase OAuth redirects the page by default, so below lines might not run depending on config.
     } catch (error: any) {
       toast.error('فشل تسجيل الدخول بجوجل');
     }

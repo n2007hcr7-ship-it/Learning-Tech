@@ -26,8 +26,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../App';
-import { doc, onSnapshot, collection, query, where, getDocs, orderBy, limit, Timestamp, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { toast } from 'sonner';
 import { 
   AreaChart, 
@@ -52,12 +51,67 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [premiumMessages, setPremiumMessages] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'finances'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'students' | 'finances' | 'settings'>('overview');
   const [students, setStudents] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterLevel, setFilterLevel] = useState('all');
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [realChartData, setRealChartData] = useState<any[]>([]);
+  const [earningsSummary, setEarningsSummary] = useState({
+    liveStreams: 0,
+    normalChats: 0,
+    premiumChats: 0,
+    total: 0
+  });
+
+  const [pricingForm, setPricingForm] = useState({
+    subscription: 0,
+    normalChat: 300,
+    premiumChat: 1000,
+    liveStream: 500
+  });
+
+  const [workingHours, setWorkingHours] = useState({ start: '17:00', end: '23:00' });
+
+  useEffect(() => {
+    if (teacherData?.pricing) {
+      setPricingForm({
+        subscription: teacherData.pricing.subscription || 0,
+        normalChat: teacherData.pricing.normalChat || 300,
+        premiumChat: teacherData.pricing.premiumChat || 1000,
+        liveStream: teacherData.pricing.liveStream || 500
+      });
+    }
+    if (teacherData?.working_hours) {
+      setWorkingHours(teacherData.working_hours);
+    }
+  }, [teacherData]);
+
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      if (pricingForm.normalChat < 300 || pricingForm.premiumChat < 1000 || pricingForm.liveStream < 500) {
+        toast.error('الأسعار أقل من الحد الأدنى المسموح به (300 للعادي، 1000 للمميز، 500 للبث المباشر)!');
+        return;
+      }
+      await supabase.from('teachers').update({ pricing: pricingForm }).eq('id', user.id);
+      toast.success('تم حفظ تحديثات الأسعار بنجاح! 🚀');
+    } catch (err) {
+      console.error(err);
+      toast.error('فشل حفظ الأسعار');
+    }
+  };
+
+  const handleSaveWorkingHours = async () => {
+    if (!user) return;
+    try {
+      await supabase.from('teachers').update({ working_hours: workingHours }).eq('id', user.id);
+      toast.success('تم حفظ ساعات العمل بنجاح! ⏰');
+    } catch (err) {
+      toast.error('فشل حفظ ساعات العمل');
+    }
+  };
 
   const defaultChartData = [
     { name: 'السبت', earnings: 0, students: 0 },
@@ -83,71 +137,55 @@ const TeacherDashboard = () => {
       return;
     }
 
-    const unsubscribe = onSnapshot(doc(db, 'teachers', user.uid), (doc) => {
-      setTeacherData(doc.data());
-    });
+    const fetchTeacher = async () => {
+      const { data } = await supabase.from('teachers').select('*').eq('id', user.id).single();
+      if (data) setTeacherData(data);
+    };
+    fetchTeacher();
 
-    // Fetch premium messages for this teacher
-    const q = query(
-      collection(db, 'messages'),
-      where('teacherId', '==', user.uid),
-      where('isPremium', '==', true),
-      orderBy('createdAt', 'desc'),
-      limit(10)
-    );
+    const channelTeacher = supabase.channel('realtime_teacher')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'teachers', filter: `id=eq.${user.id}` }, (payload) => {
+            fetchTeacher();
+        })
+        .subscribe();
 
-    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setPremiumMessages(msgs);
-    }, (error) => {
-      console.error('Error fetching premium messages:', error);
-    });
+    const fetchPremiumMessages = async () => {
+        const { data } = await supabase.from('messages')
+            .select('*')
+            .eq('teacherId', user.id)
+            .eq('isPremium', true)
+            .order('createdAt', { ascending: false })
+            .limit(10);
+        if (data) setPremiumMessages(data);
+    };
+    fetchPremiumMessages();
+    
+    const channelMessages = supabase.channel('realtime_premium_messages_dash')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `teacherId=eq.${user.id}` }, (payload) => {
+            fetchPremiumMessages();
+        })
+        .subscribe();
 
     const fetchData = async () => {
       try {
-        // Count lessons
-        const lessonsQ = query(
-          collection(db, 'lessons'), 
-          where('teacherId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(5)
-        );
-        const lessonsSnap = await getDocs(lessonsQ);
-        setLessons(lessonsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const { data: lessonsSnap } = await supabase.from('lessons').select('*').eq('teacherId', user.id).order('createdAt', { ascending: false }).limit(5);
+        if (lessonsSnap) setLessons(lessonsSnap);
         
-        // Get total count (separate query for count if needed, but for now snap.size is fine for recent)
-        const totalLessonsQ = query(collection(db, 'lessons'), where('teacherId', '==', user.uid));
-        const totalLessonsSnap = await getDocs(totalLessonsQ);
-        setLessonsCount(totalLessonsSnap.size);
+        const { count: totalLessonsCount } = await supabase.from('lessons').select('*', { count: 'exact', head: true }).eq('teacherId', user.id);
+        setLessonsCount(totalLessonsCount || 0);
 
-        // Count subscribers
-        const subsQ = query(collection(db, 'subscriptions'), where('teacherId', '==', user.uid));
-        const subsSnap = await getDocs(subsQ);
-        setSubscribersCount(subsSnap.size);
+        const { data: subsSnap } = await supabase.from('subscriptions').select('*').eq('teacherId', user.id);
+        setSubscribersCount(subsSnap?.length || 0);
 
-        // Fetch recent transactions
-        const transQ = query(
-          collection(db, 'payments'), 
-          where('teacherId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(5)
-        );
-        const transSnap = await getDocs(transQ);
-        setTransactions(transSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-
-        // Fetch payments for chart (last 7 days)
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const { data: transSnap } = await supabase.from('payments').select('*').eq('teacherId', user.id).order('createdAt', { ascending: false }).limit(5);
+        if (transSnap) setTransactions(transSnap);
         
-        const chartQ = query(
-          collection(db, 'payments'),
-          where('teacherId', '==', user.uid),
-          where('createdAt', '>=', Timestamp.fromDate(sevenDaysAgo)),
-          orderBy('createdAt', 'asc')
-        );
-        const chartSnap = await getDocs(chartQ);
+        const { data: allEarningsSnap } = await supabase.from('earnings').select('*').eq('teacherId', user.id).order('createdAt', { ascending: false });
         
-        // Process chart data
+        if (allEarningsSnap) {
+           setTransactions(allEarningsSnap.slice(0, 10).map((doc: any) => ({ ...doc, type: 'earning' })));
+        }
+
         const dailyData: { [key: string]: { earnings: number, students: number } } = {};
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
@@ -159,15 +197,41 @@ const TeacherDashboard = () => {
           dailyData[dateStr] = { earnings: 0, students: 0 };
         }
 
-        chartSnap.docs.forEach(doc => {
-          const data = doc.data();
-          const dateStr = data.createdAt.toDate().toLocaleDateString('en-US');
-          if (dailyData[dateStr]) {
-            if (data.type === 'subscription') {
-              dailyData[dateStr].earnings += data.amount || 0;
-              dailyData[dateStr].students += 1;
+        let liveTotal = 0;
+        let normalChatTotal = 0;
+        let premiumChatTotal = 0;
+        let totalEarnings = 0;
+
+        (allEarningsSnap || []).forEach((data: any) => {
+          const amount = data.earnedAmount || 0;
+          totalEarnings += amount;
+
+          if (data.reason === 'live_stream') liveTotal += amount;
+          else if (data.reason === 'normal_chat') normalChatTotal += amount;
+          else if (data.reason === 'premium_chat') premiumChatTotal += amount;
+
+          if (data.createdAt) {
+             const dateStr = new Date(data.createdAt).toLocaleDateString('en-US');
+             if (dailyData[dateStr]) {
+                 dailyData[dateStr].earnings += amount;
+             }
+          }
+        });
+
+        (subsSnap || []).forEach((data: any) => {
+          if (data.createdAt) {
+            const dateStr = new Date(data.createdAt).toLocaleDateString('en-US');
+            if (dailyData[dateStr]) {
+                dailyData[dateStr].students += 1;
             }
           }
+        });
+
+        setEarningsSummary({
+          liveStreams: liveTotal,
+          normalChats: normalChatTotal,
+          premiumChats: premiumChatTotal,
+          total: totalEarnings
         });
 
         const formattedChartData = last7Days.map(day => ({
@@ -177,16 +241,17 @@ const TeacherDashboard = () => {
         }));
         setRealChartData(formattedChartData);
 
-        // Fetch students (subscribers)
-        const studentsList: any[] = [];
-        for (const subDoc of subsSnap.docs) {
-          const subData = subDoc.data();
-          const studentSnap = await getDoc(doc(db, 'users', subData.studentId));
-          if (studentSnap.exists()) {
-            studentsList.push({ id: studentSnap.id, ...studentSnap.data(), joinedAt: subData.createdAt });
-          }
+        if (subsSnap && subsSnap.length > 0) {
+            const studentIds = subsSnap.map((sub: any) => sub.studentId);
+            const { data: studentsList } = await supabase.from('users').select('*').in('id', studentIds);
+            if (studentsList) {
+                const combined = studentsList.map((stu: any) => {
+                    const subInfo = subsSnap.find((s: any) => s.studentId === stu.id);
+                    return { ...stu, joinedAt: subInfo?.createdAt };
+                });
+                setStudents(combined);
+            }
         }
-        setStudents(studentsList);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
       } finally {
@@ -197,8 +262,8 @@ const TeacherDashboard = () => {
     fetchData();
 
     return () => {
-      unsubscribe();
-      unsubscribeMessages();
+      supabase.removeChannel(channelTeacher);
+      supabase.removeChannel(channelMessages);
     };
   }, [user, profile, authLoading, navigate]);
 
@@ -260,6 +325,7 @@ const TeacherDashboard = () => {
               { id: 'overview', name: 'نظرة عامة', icon: BarChart3 },
               { id: 'students', name: 'طلابي', icon: Users },
               { id: 'finances', name: 'الأرباح والمالية', icon: Wallet },
+              { id: 'settings', name: 'إعدادات التسعير', icon: Settings },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -445,7 +511,7 @@ const TeacherDashboard = () => {
                               <div className="flex justify-between items-start mb-1">
                                 <h4 className="text-sm font-bold truncate">{msg.senderName}</h4>
                                 <span className="text-[10px] text-gray-400">
-                                  {msg.createdAt?.toDate().toLocaleTimeString('ar-DZ')}
+                                  {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString('ar-DZ') : ''}
                                 </span>
                               </div>
                               <p className="text-xs text-gray-300 truncate">{msg.text}</p>
@@ -563,7 +629,7 @@ const TeacherDashboard = () => {
                             </span>
                           </td>
                           <td className="px-8 py-4 text-sm text-gray-500">
-                            {student.joinedAt?.toDate().toLocaleDateString('ar-DZ')}
+                            {student.joinedAt ? new Date(student.joinedAt).toLocaleDateString('ar-DZ') : ''}
                           </td>
                           <td className="px-8 py-4">
                             <div className="flex items-center gap-1.5 text-green-600 text-xs font-bold">
@@ -692,8 +758,9 @@ const TeacherDashboard = () => {
                     <h4 className="text-gray-500 text-sm font-bold mb-4">توزيع الأرباح</h4>
                     <div className="space-y-6">
                       {[
-                        { name: 'الاشتراكات الشهرية', value: 85, color: 'bg-brand-green' },
-                        { name: 'بيع الدروس المنفردة', value: 15, color: 'bg-brand-gold' },
+                        { name: 'اللايف (Live Streams)', value: earningsSummary.total > 0 ? Math.round((earningsSummary.liveStreams / earningsSummary.total) * 100) : 0, color: 'bg-brand-green' },
+                        { name: 'الدردشة المميزة', value: earningsSummary.total > 0 ? Math.round((earningsSummary.premiumChats / earningsSummary.total) * 100) : 0, color: 'bg-brand-gold' },
+                        { name: 'الدردشة العادية', value: earningsSummary.total > 0 ? Math.round((earningsSummary.normalChats / earningsSummary.total) * 100) : 0, color: 'bg-blue-500' },
                       ].map((item) => (
                         <div key={item.name}>
                           <div className="flex justify-between text-xs font-bold mb-2">
@@ -761,16 +828,21 @@ const TeacherDashboard = () => {
                                   {trans.type === 'withdrawal' ? <ArrowUpRight className="w-5 h-5" /> : <ArrowDownLeft className="w-5 h-5" />}
                                 </div>
                                 <span className="font-bold text-brand-navy">
-                                  {trans.type === 'withdrawal' ? 'سحب أرباح' : `اشتراك: ${trans.studentName}`}
+                                  {trans.type === 'withdrawal' ? 'سحب أرباح' : (
+                                    trans.reason === 'live_stream' ? 'أرباح لايف' :
+                                    trans.reason === 'premium_chat' ? 'دردشة مميزة' :
+                                    trans.reason === 'normal_chat' ? 'دردشة عادية' : 
+                                    trans.studentName ? `اشتراك: ${trans.studentName}` : 'أرباح متنوعة'
+                                  )}
                                 </span>
                               </div>
                             </td>
                             <td className="px-8 py-4 text-sm text-gray-500">
-                              {trans.createdAt?.toDate().toLocaleDateString('ar-DZ')}
+                              {trans.createdAt ? new Date(trans.createdAt).toLocaleDateString('ar-DZ') : ''}
                             </td>
                             <td className="px-8 py-4">
                               <span className={`font-bold ${trans.type === 'withdrawal' ? 'text-red-600' : 'text-green-600'}`}>
-                                {trans.type === 'withdrawal' ? '-' : '+'}{trans.amount} دج
+                                {trans.type === 'withdrawal' ? '-' : '+'}{trans.earnedAmount || trans.amount || 0} دج
                               </span>
                             </td>
                             <td className="px-8 py-4">
@@ -796,6 +868,139 @@ const TeacherDashboard = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'settings' && (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="max-w-2xl mx-auto"
+            >
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+                <div className="mb-8 border-b border-gray-100 pb-6">
+                  <h3 className="font-bold text-2xl mb-2 text-brand-navy flex items-center gap-3">
+                    <Settings className="w-6 h-6 text-brand-green" />
+                    إعدادات تسعير الخدمات
+                  </h3>
+                  <p className="text-gray-500 text-sm">قم بضبط أسعار خدماتك بالدينار الجزائري. سيتم خصم هذه المبالغ من رصيد محفظة الطالب عند طلب الخدمة.</p>
+                </div>
+
+                <form onSubmit={handleSavePricing} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة المحادثة العادية (الحد الأدنى 300 دج)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min="300"
+                        value={pricingForm.normalChat}
+                        onChange={(e) => setPricingForm({...pricingForm, normalChat: Number(e.target.value)})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none"
+                      />
+                      <CreditCard className="absolute left-4 top-3 w-5 h-5 text-gray-400" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة المحادثة المميزة الأولوية (الحد الأدنى 1000 دج)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min="1000"
+                        value={pricingForm.premiumChat}
+                        onChange={(e) => setPricingForm({...pricingForm, premiumChat: Number(e.target.value)})}
+                        className="w-full bg-brand-gold/5 border border-brand-gold/20 text-brand-navy rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-gold outline-none"
+                      />
+                      <Zap className="absolute left-4 top-3 w-5 h-5 text-brand-gold" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة البث المباشر - Live Stream (الحد الأدنى 500 دج)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min="500"
+                        value={pricingForm.liveStream}
+                        onChange={(e) => setPricingForm({...pricingForm, liveStream: Number(e.target.value)})}
+                        className="w-full bg-red-50/50 border border-red-100/50 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-red-500 outline-none"
+                      />
+                      <Video className="absolute left-4 top-3 w-5 h-5 text-red-500" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة الاشتراك الشهري (يمكن أن تكون 0 دج)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        min="0"
+                        value={pricingForm.subscription}
+                        onChange={(e) => setPricingForm({...pricingForm, subscription: Number(e.target.value)})}
+                        className="w-full bg-blue-50/50 border border-blue-100/50 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                      <Users className="absolute left-4 top-3 w-5 h-5 text-blue-400" />
+                    </div>
+                  </div>
+
+                  <div className="bg-brand-green/10 p-4 rounded-xl border border-brand-green/20 mb-6">
+                    <p className="text-xs font-bold text-brand-green leading-relaxed text-center">
+                      ملاحظة: سيتم اقتطاع 2% عمولة Chargily من كل عملية. المبلغ المتبقي يُقسم بنسبة 70% للأستاذ و 30% للمنصة. حصتك الصافية هي 68.6% من إجمالي ما يدفعه الطالب.
+                    </p>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="w-full bg-brand-green text-white py-4 rounded-2xl font-bold shadow-lg shadow-brand-green/20 hover:bg-brand-green/90 active:scale-95 transition-all text-lg"
+                  >
+                    حفظ التسعيرات الجديدة
+                  </button>
+                </form>
+              </div>
+
+              {/* Working Hours Section */}
+              <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 mt-6">
+                <div className="mb-6 border-b border-gray-100 pb-6">
+                  <h3 className="font-bold text-2xl mb-2 text-brand-navy flex items-center gap-3">
+                    <Clock className="w-6 h-6 text-brand-gold" />
+                    ساعات العمل والتواجد
+                  </h3>
+                  <p className="text-gray-500 text-sm">حدد الفترة الزمنية التي تكون فيها متاحاً للرد على الشات المميز. سيتم تنبيهك تلقائياً كل 25 دقيقة في حال وجود رسائل غير مجاب عليها.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">⏰ من الساعة</label>
+                    <input
+                      type="time"
+                      value={workingHours.start}
+                      onChange={(e) => setWorkingHours({ ...workingHours, start: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-gold outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">🌙 إلى الساعة</label>
+                    <input
+                      type="time"
+                      value={workingHours.end}
+                      onChange={(e) => setWorkingHours({ ...workingHours, end: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-gold outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="bg-brand-gold/10 border border-brand-gold/20 rounded-xl p-4 mb-6">
+                  <p className="text-xs text-brand-gold font-bold text-center">
+                    ستتلقى إشعاراً كل 25 دقيقة خلال ساعات عملك تذكيراً بالرد على رسائل الشات المميز
+                  </p>
+                </div>
+                <button
+                  onClick={handleSaveWorkingHours}
+                  className="w-full bg-brand-gold text-white py-4 rounded-2xl font-bold shadow-lg shadow-brand-gold/20 hover:bg-brand-gold/90 active:scale-95 transition-all text-lg"
+                >
+                  حفظ ساعات العمل
+                </button>
               </div>
             </motion.div>
           )}

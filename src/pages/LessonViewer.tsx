@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Award, PlayCircle, BookOpen, Clock, ShieldCheck, User } from 'lucide-react';
+import { ArrowLeft, Award, PlayCircle, Clock, ShieldCheck, User, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 const LessonViewer = () => {
@@ -17,28 +15,22 @@ const LessonViewer = () => {
   const [loading, setLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
+  const [isBlurred, setIsBlurred] = useState(false);
+  const [iqCoins, setIqCoins] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const lastValidTimeRef = useRef(0);
+  const seekingRef = useRef(false);
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
+    if (!user) { navigate('/login'); return; }
     
-    // منع دخول من لا يملك اشتراك (إلا إذا كان أستاذاً للمراجعة)
-    if (profile?.role === 'student' && !profile?.isSubscribed) {
-      toast.error('هذا المحتوى يتطلب باقة اشتراك (Premium) 🔒');
-      navigate('/lessons');
-      return;
-    }
-
     const fetchLesson = async () => {
       try {
         if (!id) return;
-        const lessonSnap = await getDoc(doc(db, 'lessons', id));
-        if (lessonSnap.exists()) {
-          setLesson({ id: lessonSnap.id, ...lessonSnap.data() });
+        const { data, error } = await supabase.from('lessons').select('*').eq('id', id).single();
+        if (data && !error) {
+          setLesson(data);
         } else {
           toast.error('عذراً، هذا الدرس غير موجود أو تم حذفه');
           navigate('/lessons');
@@ -50,41 +42,74 @@ const LessonViewer = () => {
       }
     };
 
-    fetchLesson();
-  }, [id, user, profile, navigate]);
+    // جلب رصيد IQ Coins
+    const fetchCoins = async () => {
+      const { data } = await supabase.from('users').select('iq_coins').eq('id', user.id).single();
+      if (data) setIqCoins(data.iq_coins || 0);
+    };
 
-  // دالة تُستدعى عند انتهاء التلميذ من مشاهدة الفيديو
+    fetchLesson();
+    fetchCoins();
+  }, [id, user, navigate]);
+
+  // ⚡ حماية ضد التخطي: نكتشف ما إذا قفز التلميذ أكثر من 10 ثوانٍ للأمام
+  const handleTimeUpdate = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || seekingRef.current) return;
+    const diff = video.currentTime - lastValidTimeRef.current;
+    if (diff > 10) {
+      // إعادة لآخر موضع مقبول
+      video.currentTime = lastValidTimeRef.current;
+      toast.error('⚠️ لا يُسمح بتخطي أجزاء الدرس! يجب المشاهدة الكاملة للحصول على IQ Coin.');
+    } else {
+      lastValidTimeRef.current = video.currentTime;
+    }
+  }, []);
+
+  const handleSeeking = () => { seekingRef.current = true; };
+  const handleSeeked = () => { seekingRef.current = false; };
+
+  // 🔒 إخفاء الفيديو عند تبديل علامة التبويب (منع تصوير الشاشة)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsBlurred(document.hidden);
+      if (document.hidden && videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // دالة تُستدعى عند انتهاء التلميذ من مشاهدة الفيديو بالكامل
   const handleVideoEnd = async () => {
     setIsVideoEnded(true);
-
-    // الأستاذ لا يكسب نقاطاً من المشاهدة
     if (profile?.role !== 'student') return;
 
     try {
-      // استدعاء دالة الخادم الآمنة بدلاً من الكتابة المباشرة
-      const awardPoint = httpsCallable(functions, 'awardLessonPoint');
-      const result: any = await awardPoint({ lessonId: lesson.id });
+      const { error } = await supabase.rpc('award_iq_coin', {
+        lesson_id: lesson.id
+      });
 
-      if (result.data.success) {
+      if (!error) {
+        setIqCoins(prev => prev + 1);
         setShowConfetti(true);
-        toast.success('أحسنت! 🥳 لقد ربحت +1 نقطة تعليمية (Credit Point) لإكمالك الدرس!', {
+        toast.success('🥳 أحسنت! ربحت +1 IQ Coin على إكمالك هذا الدرس!', {
           duration: 5000,
           position: 'top-center',
           style: { background: '#22c55e', color: 'white', border: 'none' }
         });
         setTimeout(() => setShowConfetti(false), 6000);
-      } else if (result.data.reason === 'already_completed') {
-        toast.info('لقد أكملت هذا الدرس من قبل.', { position: 'top-center' });
+      } else {
+        toast.info('لقد أكملت هذا الدرس مسبقاً.');
       }
     } catch (error: any) {
-      // Fallback: إذا فشل الاتصال بالخادم نُعلمه بالخطأ فقط
-      console.error('Error calling awardLessonPoint:', error);
-      toast.error('تعذّر الاتصال بالخادم. تأكد من اتصالك بالإنترنت.');
+      console.error('Error awarding IQ coin:', error);
     }
   };
 
-  // حماية الشاشة (Watermark)
-  const watermarkText = user?.email || 'LEARNING-TECH';
+  // حماية الشاشة (العلامة المائية)
+  const watermarkText = profile?.name || user?.email || 'LEARNING-TECH';
 
   if (loading) {
     return (
@@ -125,9 +150,9 @@ const LessonViewer = () => {
           </button>
           
           <div className="flex items-center gap-4">
-            <div className="bg-brand-gold/10 text-brand-gold px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-sm shadow-inner">
-              <Award className="w-4 h-4" />
-              النقاط: {profile?.points || 0}
+            <div className="bg-yellow-500/10 text-yellow-400 px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-sm shadow-inner border border-yellow-500/20">
+              <Zap className="w-4 h-4" />
+              IQ Coins: {iqCoins}
             </div>
           </div>
         </div>
@@ -135,22 +160,37 @@ const LessonViewer = () => {
         {/* Video Player Section */}
         <div className="bg-black/40 rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative mb-8">
           
-          {/* Watermark لمنع التسريب */}
-          <div className="absolute inset-0 pointer-events-none select-none flex items-center justify-center opacity-10 mix-blend-overlay z-10 overflow-hidden">
-             <div className="text-white text-5xl font-black rotate-45 tracking-widest uppercase">
-               {watermarkText} - {watermarkText}
-             </div>
+          {/* 🔒 شاشة سوداء عند تبديل التبويب (منع تصوير الشاشة) */}
+          {isBlurred && (
+            <div className="absolute inset-0 bg-black z-30 flex flex-col items-center justify-center gap-4">
+              <ShieldCheck className="w-16 h-16 text-green-400" />
+              <p className="text-white font-bold text-xl">🔒 محتوى محمي</p>
+              <p className="text-gray-400 text-sm">يُرجى العودة لهذه الصفحة لمواصلة المشاهدة</p>
+            </div>
+          )}
+
+          {/* علامة مائية ديناميكية */}
+          <div className="absolute inset-0 pointer-events-none select-none z-10 overflow-hidden">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="absolute text-white/5 font-black text-lg rotate-45 whitespace-nowrap"
+                style={{ top: `${(i * 18) - 5}%`, left: `${i % 2 === 0 ? '-10%' : '10%'}` }}>
+                {watermarkText} • LEARNING TECH •
+              </div>
+            ))}
           </div>
 
           <video 
             ref={videoRef}
-            src={lesson.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"} // فيديو افتراضي كعينة
+            src={lesson.url || lesson.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"}
             controls
-            controlsList="nodownload"
+            controlsList="nodownload noremoteplayback"
+            disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
             onEnded={handleVideoEnd}
+            onTimeUpdate={handleTimeUpdate}
+            onSeeking={handleSeeking}
+            onSeeked={handleSeeked}
             className="w-full aspect-video object-contain"
-            poster={lesson.thumbnail}
           >
             متصفحك لا يدعم مشغل الفيديو.
           </video>
@@ -217,16 +257,33 @@ const LessonViewer = () => {
             <div className="bg-gradient-to-br from-brand-green/20 to-emerald-900/40 border border-brand-green/30 rounded-3xl p-6 relative overflow-hidden">
               <Award className="absolute -bottom-4 -right-4 w-32 h-32 text-brand-green/10" />
               <div className="relative z-10">
-                <h3 className="font-bold text-lg mb-2 text-brand-green flex items-center gap-2">
+                <h3 className="font-bold text-lg mb-3 text-brand-green flex items-center gap-2">
                   <PlayCircle className="w-5 h-5" />
                   تعلم واربح بذكاء!
                 </h3>
                 <p className="text-gray-300 text-xs leading-relaxed mb-4">
-                  كيف يعمل نظام النقاط (Learn-to-Earn)؟
-                  في كل مرة تكمل فيها مشاهدة فيديو لنهايته ستربح نقطة. يمكن استخدام هذه النقاط لحجز البث المباشر المأجور، والمحادثات الخاصة، والعديد من الخدمات الأخرى مجاناً من محفظتك.
+                  أكمل مشاهدة الدروس واكسب نقطة عند كل إتمام. استبدل نقاطك بخدمات مجانية:
                 </p>
-                <Link to="/profile" className="text-brand-green hover:underline text-xs font-bold">
-                  اكتشف الهدايا المتاحة ←
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <span className="bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-lg font-black">25</span>
+                    <span>= دخول بث مباشر مجاني</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <span className="bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-lg font-black">100</span>
+                    <span>= شات عادي مع أستاذ</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <span className="bg-green-500/20 text-green-300 px-2 py-0.5 rounded-lg font-black">30</span>
+                    <span>= درس منفرد مجاني</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-gray-300">
+                    <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-lg font-black">80</span>
+                    <span>= قائمة تشغيل كاملة</span>
+                  </div>
+                </div>
+                <Link to="/points" className="text-brand-green hover:underline text-xs font-bold mt-4 block">
+                  اكتشف محفظة النقاط ←
                 </Link>
               </div>
             </div>

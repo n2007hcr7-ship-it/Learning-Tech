@@ -6,6 +6,9 @@
     "firebase-functions": "^5.0.0",
     "agora-access-token": "^2.0.4"
   },
+  "scripts": {
+    "build": "echo 'No build step needed for plain JS functions'"
+  },
   "engines": {
     "node": "18"
   },

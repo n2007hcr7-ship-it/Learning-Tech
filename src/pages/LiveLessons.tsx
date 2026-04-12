@@ -4,9 +4,7 @@ import { Video, Calendar, Clock, User, Zap, Lock, Plus, X, Users, Timer } from '
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
-// استدعاءات Realtime Database بالإضافة للميزات الجديدة كلاً من (push و serverTimestamp)
-import { ref, onValue, push, query as rtdbQuery, orderByChild, serverTimestamp as rtdbTimestamp } from 'firebase/database';
-import { rtdb } from '../firebase'; 
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 
 const LiveLessons = () => {
@@ -32,28 +30,25 @@ const LiveLessons = () => {
       return;
     }
 
-    const liveStreamsRef = rtdbQuery(ref(rtdb, 'liveStreams'), orderByChild('createdAt'));
-    
-    const unsubscribe = onValue(liveStreamsRef, (snapshot) => {
-      const data = snapshot.val();
+    const fetchLiveStreams = async () => {
+      const { data, error } = await supabase.from('live_streams').select('*').order('createdAt', { ascending: false });
       if (data) {
-        const sessions = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        }));
-        
-        sessions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        setLiveSessions(sessions);
+        setLiveSessions(data);
       } else {
         setLiveSessions([]);
       }
       setLoading(false);
-    }, (error) => {
-      console.error('Error fetching live streams:', error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchLiveStreams();
+
+    const channel = supabase.channel('realtime_live_streams')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_streams' }, () => {
+        fetchLiveStreams();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   // دالة إنشاء بث مباشر جديد وحفظ السعر
@@ -65,17 +60,18 @@ const LiveLessons = () => {
       const newSession = {
         title: formData.title,
         subject: formData.subject,
-        teacher: profile?.name || user.displayName || 'أستاذ',
+        teacher: profile?.name || user.email || 'أستاذ',
+        teacherId: user.id,
         time: formData.time,
         price: Number(formData.price) || 0,
         maxAttendees: Number(formData.maxAttendees),
         duration: Number(formData.duration),
         status: 'upcoming', 
         viewers: 0,
-        createdAt: rtdbTimestamp()
+        createdAt: new Date().toISOString()
       };
 
-      await push(ref(rtdb, 'liveStreams'), newSession);
+      await supabase.from('live_streams').insert(newSession);
       
       setShowNewLiveModal(false);
       setFormData({ title: '', subject: '', time: '', price: '', maxAttendees: '50', duration: '60' });

@@ -1,15 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, Clock, ChevronRight, Search, Plus, X } from 'lucide-react';
+import { MessageCircle, Send, Clock, Search, Plus, X, Zap, Brain } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-
-// 1. استدعاءات Realtime Database (للرسائل)
-import { ref, push, onValue, query as rtdbQuery, limitToLast, serverTimestamp as rtdbTimestamp } from 'firebase/database';
-
-// 2. استدعاءات Firestore (للمحادثات والأساتذة)
-import { collection, addDoc, query as firestoreQuery, orderBy, onSnapshot, serverTimestamp as firestoreTimestamp, where, doc, getDocs, updateDoc, limit } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-
-import { db, rtdb, functions, handleFirestoreError, OperationType } from '../firebase';
+import { GoogleGenAI } from '@google/genai';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 import { toast } from 'sonner';
 
@@ -20,50 +13,61 @@ const NormalChat = () => {
   const [chats, setChats] = useState<any[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [aiTyping, setAiTyping] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [teachers, setTeachers] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [iqCoins, setIqCoins] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const selectedChat = chats.find(c => c.id === selectedChatId);
+  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
-  // 1. جلب المحادثات الأساسية من Firestore
+  // 1. جلب المحادثات الأساسية من Supabase
   useEffect(() => {
     if (!user || !profile) return;
 
-    const chatRef = collection(db, 'chats');
-    const q = firestoreQuery(
-      chatRef,
-      where('participants', 'array-contains', user.uid),
-      where('type', '==', 'normal'),
-      orderBy('updatedAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setChats(chatsData);
+    const fetchChats = async () => {
+      const { data } = await supabase
+        .from('chats')
+        .select('*')
+        .eq('type', 'normal')
+        .contains('participants', [user.id])
+        .order('updatedAt', { ascending: false });
+      if (data) setChats(data);
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'chats');
-      setLoading(false);
-    });
+    };
 
-    return unsubscribe;
+    // جلب رصيد IQ Coins
+    const fetchCoins = async () => {
+      const { data } = await supabase.from('users').select('iq_coins').eq('id', user.id).single();
+      if (data) setIqCoins(data.iq_coins || 0);
+    };
+
+    fetchChats();
+    fetchCoins();
+
+    const channel = supabase.channel('realtime_chats')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, () => fetchChats())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user, profile]);
 
-  // 2. جلب الأساتذة للقائمة المنبثقة من Firestore
+  // 2. جلب الأساتذة للقائمة المنبثقة
   useEffect(() => {
     if (showNewChatModal) {
       const fetchTeachers = async () => {
-        const q = firestoreQuery(collection(db, 'teachers'), limit(20));
-        const snapshot = await getDocs(q);
-        setTeachers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const { data } = await supabase.from('teachers').select('*, users(name, email)').limit(50);
+        if (data) setTeachers(data);
       };
       fetchTeachers();
+      setSearchTerm('');
     }
   }, [showNewChatModal]);
 
-  // 3. جلب وعرض الرسائل من Realtime Database اللحظية 🚀
+  // 3. جلب وعرض الرسائل من Supabase اللحظية 🚀
   useEffect(() => {
     if (!selectedChatId) {
       setMessages([]);
@@ -71,63 +75,84 @@ const NormalChat = () => {
     }
 
     setMessagesLoading(true);
-    // استخدام استعلام Realtime Database لقراءة آخر 50 رسالة
-    const messagesRef = rtdbQuery(ref(rtdb, `messages/${selectedChatId}`), limitToLast(50));
-
-    const unsubscribe = onValue(messagesRef, (snapshot) => {
-      const data = snapshot.val();
+    
+    const fetchMessages = async () => {
+      const { data } = await supabase.from('messages').select('*').eq('chatId', selectedChatId).order('createdAt', { ascending: true }).limit(50);
       if (data) {
-        // تحويل البيانات من كائن Object إلى مصفوفة Array ليتم عرضها بسهولة
-        const messageList = Object.keys(data).map(key => ({
-          id: key,
-          ...data[key]
-        }));
-        setMessages(messageList);
-      } else {
-        setMessages([]);
+        setMessages(data);
       }
       setMessagesLoading(false);
-      
       setTimeout(() => {
         scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
-    }, (error) => {
-      console.error('Error fetching RTDB messages:', error);
-      setMessagesLoading(false);
-    });
+    };
 
-    // إغلاق الاستماع عند الخروج أو تغيير المحادثة
-    return () => unsubscribe();
+    fetchMessages();
+
+    // Supabase Realtime Subscription
+    const channel = supabase.channel('realtime_messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `chatId=eq.${selectedChatId}` }, (payload) => {
+        setMessages((prev) => [...prev, payload.new as any]);
+        setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [selectedChatId]);
 
-  // إرسال رسالة جديدة
+  // إرسال رسالة + رد الذكاء الاصطناعي تلقائياً
   const handleSend = async () => {
     if (!message.trim() || !user || !selectedChatId || !selectedChat) return;
+    const userMsg = message;
+    setMessage('');
 
     try {
+      // 1. حفظ رسالة التلميذ
       const msgData = {
         chatId: selectedChatId,
-        text: message,
-        senderId: user.uid,
-        senderName: user.displayName || (profile?.role === 'teacher' ? 'أستاذ' : 'تلميذ'),
+        text: userMsg,
+        senderId: user.id,
+        senderName: profile?.name || 'تلميذ',
         teacherId: selectedChat.teacherId,
         studentId: selectedChat.studentId,
         isPremium: false,
-        createdAt: rtdbTimestamp(), // وقت خاص بـ Realtime Database
+        createdAt: new Date().toISOString(),
+        isAI: false
       };
+      await supabase.from('messages').insert(msgData);
+      await supabase.from('chats').update({ lastMessage: userMsg, updatedAt: new Date().toISOString() }).eq('id', selectedChatId);
 
-      // الدفع إلى Realtime Database
-      await push(ref(rtdb, `messages/${selectedChatId}`), msgData);
+      // 2. رد الذكاء الاصطناعي (Gemini)
+      setAiTyping(true);
+      const teacherSubject = selectedChat.teacherSubject || 'علوم عامة';
+      const systemPrompt = `أنت مساعد تعليمي ذكي خبير في مادة ${teacherSubject}. أجب باللغة العربية بشكل واضح ومبسط مناسب للتلميذ. أجبتك تكون مختصرة ومفيدة.`;
       
-      // تحديث آخر رسالة والوقت في قوائم المحادثات في Firestore
-      await updateDoc(doc(db, 'chats', selectedChatId), {
-        lastMessage: message,
-        updatedAt: firestoreTimestamp() // وقت خاص بـ Firestore
+      const response = await ai.models.generateContent({
+        model: 'gemma-4-26b',
+        contents: `${systemPrompt}\n\nسؤال التلميذ: ${userMsg}`
       });
+      
+      const aiReply = response.text || 'عذراً، لم أتمكن من فهم السؤال. حاول مرة أخرى.';
 
-      setMessage('');
+      // 3. حفظ رد الذكاء الاصطناعي
+      const aiMsgData = {
+        chatId: selectedChatId,
+        text: aiReply,
+        senderId: selectedChat.teacherId,
+        senderName: `مساعد ذكي (أستاذ ${selectedChat.teacherName?.split(' ')[0] || ''})`,
+        teacherId: selectedChat.teacherId,
+        isPremium: false,
+        createdAt: new Date().toISOString(),
+        isAI: true
+      };
+      await supabase.from('messages').insert(aiMsgData);
+      await supabase.from('chats').update({ lastMessage: aiReply, updatedAt: new Date().toISOString() }).eq('id', selectedChatId);
+      
     } catch (error) {
       console.error('Error sending message:', error);
+      toast.error('تعذّر إرسال الرسالة');
+    } finally {
+      setAiTyping(false);
     }
   };
 
@@ -135,7 +160,6 @@ const NormalChat = () => {
   const startNewChat = async (teacher: any) => {
     if (!user || !profile) return;
 
-    // التحقق مما إذا كانت المحادثة موجودة مسبقاً
     const existingChat = chats.find(c => c.teacherId === teacher.id);
     if (existingChat) {
       setSelectedChatId(existingChat.id);
@@ -143,43 +167,39 @@ const NormalChat = () => {
       return;
     }
 
-    // --- نظام الدفع بالنقاط للمحادثة العادية ---
+    const price = teacher.pricing?.normalChat || 300;
+    
     if (profile.role === 'student' && !profile.isSubscribed) {
-      if ((profile.points || 0) < 100) {
-        toast.error('تحتاج إلى 100 نقطة أو اشتراك فعّال لفتح محادثة جديدة.');
+      if ((profile.balance || 0) < price) {
+        toast.error(`تحتاج إلى ${price} دج أو اشتراك فعّال لفتح محادثة جديدة.`);
         return;
       }
       try {
-        // استدعاء دالة الخادم الآمنة بدلاً من الكتابة المباشرة
-        const spendPoints = httpsCallable(functions, 'spendPoints');
-        await spendPoints({ amount: 100, reason: 'normal_chat' });
-        toast.success('تم خصم 100 نقطة لفتح المحادثة!');
+        const { error } = await supabase.rpc('process_service_payment', { amount: price, reason: 'normal_chat', teacher_id: teacher.id });
+        if (error) throw error;
+        toast.success(`تم خصم ${price} دج من رصيدك لفتح المحادثة!`);
       } catch (e: any) {
-        const msg = e?.message?.includes('resource-exhausted')
-          ? 'رصيدك غير كافِ. أكمل المزيد من الدروس لتجميع النقاط.'
-          : 'حدث خطأ أثناء معالجة الدفع';
-        toast.error(msg);
+        toast.error('رصيدك في المحفظة غير كافِ أو حدث خطأ.');
         return;
       }
     }
 
     try {
       const chatData = {
-        participants: [user.uid, teacher.id],
-        studentId: user.uid,
+        participants: [user.id, teacher.id],
+        studentId: user.id,
         teacherId: teacher.id,
         studentName: profile.name || 'تلميذ',
-        teacherName: teacher.name || 'أستاذ',
+        teacherName: teacher.name || teacher.users?.name || 'أستاذ',
         type: 'normal',
-        updatedAt: firestoreTimestamp(),
+        updatedAt: new Date().toISOString(),
         lastMessage: ''
       };
 
-      // إنشاء المحادثة في Firestore
-      const docRef = await addDoc(collection(db, 'chats'), chatData);
+      const { data, error } = await supabase.from('chats').insert(chatData).select().single();
+      if (error) throw error;
       
-      // اختيارها مباشرة دون إرسال رسائل فارغة، الرسالة سيتم إرسالها من المربع أدناه
-      setSelectedChatId(docRef.id);
+      setSelectedChatId(data.id);
       setShowNewChatModal(false);
     } catch (error) {
       console.error('Error starting chat:', error);
@@ -204,9 +224,10 @@ const NormalChat = () => {
               {profile?.role === 'student' && (
                 <button 
                   onClick={() => setShowNewChatModal(true)}
-                  className="p-2 bg-brand-green text-white rounded-xl hover:bg-brand-green/90 transition-all"
+                  className="px-4 py-2 bg-brand-green text-white rounded-xl hover:bg-brand-green/90 transition-all flex items-center gap-2 text-sm font-bold"
                 >
-                  <Plus className="w-5 h-5" />
+                  <Plus className="w-4 h-4" />
+                  إنشاء محادثة جديدة
                 </button>
               )}
             </div>
@@ -256,7 +277,7 @@ const NormalChat = () => {
                       {chat.lastMessage || 'ابدأ المحادثة الآن...'}
                     </p>
                   </div>
-                  <ChevronRight className={`w-4 h-4 ${selectedChatId === chat.id ? 'text-white' : 'text-gray-300'}`} />
+                  <span className={`text-xs ${selectedChatId === chat.id ? 'text-white' : 'text-gray-300'}`}>›</span>
                 </button>
               ))
             )}
@@ -267,32 +288,34 @@ const NormalChat = () => {
         <div className={`flex-1 flex flex-col bg-gray-50/50 ${!selectedChatId ? 'hidden md:flex' : 'flex'}`}>
           {selectedChat ? (
             <>
-              {/* Header */}
-              <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => setSelectedChatId(null)}
-                    className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
-                  >
-                    <ChevronRight className="w-6 h-6 rotate-180" />
-                  </button>
-                  <div className="w-10 h-10 rounded-xl bg-brand-green flex items-center justify-center text-white font-bold">
-                    {(profile?.role === 'teacher' ? selectedChat.studentName : selectedChat.teacherName)?.[0]}
+                <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setSelectedChatId(null)} className="md:hidden p-2 hover:bg-gray-100 rounded-lg">
+                      <Plus className="w-6 h-6 rotate-45" />
+                    </button>
+                    <div className="w-10 h-10 rounded-xl bg-brand-green flex items-center justify-center text-white font-bold">
+                      {(profile?.role === 'teacher' ? selectedChat.studentName : selectedChat.teacherName)?.[0]}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-brand-navy">
+                        {profile?.role === 'teacher' ? selectedChat.studentName : selectedChat.teacherName}
+                      </h3>
+                      <span className="text-[10px] text-purple-500 flex items-center gap-1 font-bold">
+                        <Brain className="w-3 h-3" />
+                        يرد بالذكاء الاصطناعي
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-brand-navy">
-                      {profile?.role === 'teacher' ? selectedChat.studentName : selectedChat.teacherName}
-                    </h3>
-                    <span className="text-[10px] text-brand-green flex items-center gap-1 font-bold">
-                      <div className="w-1.5 h-1.5 rounded-full bg-brand-green animate-pulse" />
-                      نشط الآن
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-yellow-50 border border-yellow-200 px-3 py-1 rounded-lg text-[10px] font-bold text-yellow-600 flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      {iqCoins} IQ
+                    </div>
+                    <div className="bg-purple-50 px-3 py-1 rounded-lg text-[10px] font-bold text-purple-600">
+                      شات + ذكاء اصطناعي
+                    </div>
                   </div>
                 </div>
-                <div className="bg-brand-navy/5 px-3 py-1 rounded-lg text-[10px] font-bold text-brand-navy/60">
-                  محادثة عادية
-                </div>
-              </div>
 
               {/* Messages */}
               <div className="flex-1 p-6 overflow-y-auto space-y-4">
@@ -307,14 +330,22 @@ const NormalChat = () => {
                   </div>
                 ) : (
                   messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.senderId === user?.uid ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id} className={`flex ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}>
                       <div className={`p-4 rounded-3xl shadow-sm max-w-[80%] ${
-                        msg.senderId === user?.uid 
+                        msg.senderId === user?.id 
                           ? 'bg-brand-green text-white rounded-tl-none' 
-                          : 'bg-white text-brand-navy rounded-tr-none border border-gray-100'
+                          : msg.isAI 
+                            ? 'bg-purple-50 text-purple-900 rounded-tr-none border border-purple-100'
+                            : 'bg-white text-brand-navy rounded-tr-none border border-gray-100'
                       }`}>
+                        {msg.isAI && (
+                          <div className="flex items-center gap-1 text-purple-500 text-[9px] font-bold mb-2">
+                            <Brain className="w-3 h-3" />
+                            مساعد ذكي
+                          </div>
+                        )}
                         <p className="text-sm leading-relaxed">{msg.text}</p>
-                        <div className={`text-[9px] mt-2 flex items-center gap-1 ${msg.senderId === user?.uid ? 'text-white/70' : 'text-gray-400'}`}>
+                        <div className={`text-[9px] mt-2 flex items-center gap-1 ${msg.senderId === user?.id ? 'text-white/70' : 'text-gray-400'}`}>
                           <Clock className="w-3 h-3" />
                           {msg.createdAt 
                             ? new Date(msg.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' }) 
@@ -323,6 +354,17 @@ const NormalChat = () => {
                       </div>
                     </div>
                   ))
+                )}
+                {aiTyping && (
+                  <div className="flex justify-start">
+                    <div className="bg-purple-50 border border-purple-100 px-5 py-3 rounded-3xl rounded-tr-none flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-purple-500 animate-pulse" />
+                      <span className="text-purple-600 text-xs font-medium">يفكّر…</span>
+                      <div className="flex gap-1">
+                        {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-bounce" style={{animationDelay: `${i*0.15}s`}} />)}
+                      </div>
+                    </div>
+                  </div>
                 )}
                 <div ref={scrollRef} />
               </div>
@@ -392,22 +434,40 @@ const NormalChat = () => {
                   <X className="w-6 h-6" />
                 </button>
               </div>
+              <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                <div className="relative">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="ابحث عن أستاذ (الاسم أو المادة)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-white border border-gray-100 rounded-xl pr-10 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green transition-all outline-none"
+                  />
+                </div>
+              </div>
               <div className="p-4 max-h-[400px] overflow-y-auto space-y-2">
                 {teachers.length === 0 ? (
                   <p className="text-center py-10 text-gray-400">لا يوجد أساتذة متاحون حالياً</p>
                 ) : (
-                  teachers.map(teacher => (
+                  teachers
+                    .filter(t => t.name?.toLowerCase().includes(searchTerm.toLowerCase()) || t.subject?.includes(searchTerm))
+                    .map(teacher => (
                     <button
                       key={teacher.id}
                       onClick={() => startNewChat(teacher)}
-                      className="w-full p-4 rounded-2xl flex items-center gap-4 hover:bg-gray-50 transition-all border border-transparent hover:border-brand-green/20"
+                      className="w-full p-4 rounded-2xl flex items-center gap-4 transition-all border hover:bg-gray-50 border-transparent"
                     >
-                      <div className="w-12 h-12 rounded-xl bg-brand-green/10 flex items-center justify-center text-brand-green font-bold text-lg">
-                        {teacher.name?.[0]}
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg bg-brand-green/10 text-brand-green">
+                        {teacher.name?.[0] || teacher.users?.name?.[0] || '؟'}
                       </div>
-                      <div className="text-right">
-                        <h4 className="font-bold text-brand-navy">{teacher.name}</h4>
+                      <div className="text-right flex-1">
+                        <h4 className="font-bold text-brand-navy">{teacher.name || teacher.users?.name}</h4>
                         <p className="text-xs text-gray-500">{teacher.subject}</p>
+                      </div>
+                      <div className="font-bold text-sm text-purple-600 flex items-center gap-1 bg-purple-50 px-3 py-1.5 rounded-xl">
+                        <Brain className="w-3 h-3" />
+                        {teacher.pricing?.normalChat || 300} دج
                       </div>
                     </button>
                   ))

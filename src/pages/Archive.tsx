@@ -14,8 +14,7 @@ import {
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '../App';
-import { collection, query, where, getDocs, doc, updateDoc, arrayRemove } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 
 const Archive = () => {
   const { user, profile } = useAuth();
@@ -24,16 +23,21 @@ const Archive = () => {
 
   useEffect(() => {
     const fetchSavedLessons = async () => {
-      if (!user || !profile?.downloadedLessons?.length) {
+      if (!user || (!profile?.downloaded_lessons?.length && !profile?.downloadedLessons?.length)) {
         setLoading(false);
         return;
       }
 
       try {
-        const q = query(collection(db, 'lessons'), where('__name__', 'in', profile.downloadedLessons));
-        const snapshot = await getDocs(q);
-        const lessons = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setSavedLessons(lessons);
+        const downloadedIds = profile.downloaded_lessons || profile.downloadedLessons || [];
+        if (downloadedIds.length === 0) {
+          setLoading(false);
+          return;
+        }
+        const { data, error } = await supabase.from('lessons').select('*').in('id', downloadedIds);
+        if (data) {
+          setSavedLessons(data);
+        }
       } catch (error) {
         console.error('Error fetching saved lessons:', error);
       } finally {
@@ -54,10 +58,9 @@ const Archive = () => {
   const handleDelete = async (lessonId: string) => {
     if (!user) return;
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        downloadedLessons: arrayRemove(lessonId)
-      });
+      const currentLessons = profile?.downloaded_lessons || profile?.downloadedLessons || [];
+      const updatedLessons = currentLessons.filter((id: string) => id !== lessonId);
+      await supabase.from('users').update({ downloaded_lessons: updatedLessons }).eq('id', user.id);
       setSavedLessons(prev => prev.filter(l => l.id !== lessonId));
       toast.success('تم حذف الدرس من الأرشيف');
     } catch (error) {

@@ -4,8 +4,7 @@ import {
   CheckCircle2, AlertCircle, Coins, ExternalLink, Loader2
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -42,21 +41,20 @@ const PaymentsPage = () => {
     toast.loading('جاري إنشاء جلسة الدفع الآمنة...', { id: 'chargily' });
 
     try {
-      // ── 1. استدعاء Cloud Function لإنشاء جلسة دفع Chargily ──
-      const createCheckout = httpsCallable<
-        { amount: number; method: string; successUrl: string },
-        CheckoutResponse
-      >(functions, 'createChargilyCheckout');
-
-      const result = await createCheckout({
-        amount:     numAmount,
-        method,
-        successUrl: window.location.origin,
+      // ── 1. استدعاء Edge Function لإنشاء جلسة دفع Chargily ──
+      const { data, error } = await supabase.functions.invoke('create-chargily-checkout', {
+        body: {
+          amount: numAmount,
+          method,
+          successUrl: window.location.origin,
+        }
       });
+
+      if (error) throw error;
 
       toast.dismiss('chargily');
 
-      const { checkoutUrl } = result.data;
+      const { checkoutUrl } = data;
 
       if (!checkoutUrl) throw new Error('لم يتم استلام رابط الدفع من الخادم.');
 

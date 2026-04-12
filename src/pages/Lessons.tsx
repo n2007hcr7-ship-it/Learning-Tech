@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { BookOpen, User, Lock, Download, ShieldAlert, PlayCircle, ShieldCheck } from 'lucide-react';
+import { supabase } from '../supabase';
+import { BookOpen, User, Lock, Download, ShieldAlert, PlayCircle, ShieldCheck, Plus, X, Upload } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../App';
 import { Link } from 'react-router-dom';
@@ -13,6 +12,43 @@ const LessonsPage = () => {
   
   // إشعار ديناميكي مخصص لرسائل التحميل والأخطاء
   const [toastMessage, setToastMessage] = useState({ text: '', type: '' });
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [lessonForm, setLessonForm] = useState({
+    title: '',
+    description: '',
+    subject: '',
+    month: 'جانفي',
+    level: '',
+    thumbnail: '',
+    videoUrl: ''
+  });
+
+  const handleAddLesson = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile || profile.role !== 'teacher') return;
+    try {
+      await supabase.from('lessons').insert({
+        ...lessonForm,
+        teacherId: user?.id,
+        teacherName: profile.name || 'أستاذ',
+        createdAt: new Date().toISOString(),
+        views: 0
+      });
+      setShowAddModal(false);
+      setToastMessage({
+        text: 'تمت إضافة الكورس بنجاح!',
+        type: 'success'
+      });
+      setTimeout(() => setToastMessage({ text: '', type: '' }), 4000);
+      setLessonForm({title: '', description: '', subject: '', month: 'جانفي', level: '', thumbnail: '', videoUrl: ''});
+    } catch (err) {
+      setToastMessage({
+        text: 'فشل إضافة الكورس!',
+        type: 'error'
+      });
+      setTimeout(() => setToastMessage({ text: '', type: '' }), 4000);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -20,16 +56,23 @@ const LessonsPage = () => {
       return;
     }
 
-    const q = query(collection(db, 'lessons'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const lessonsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLessons(lessonsData);
+    const fetchLessons = async () => {
+      const { data, error } = await supabase.from('lessons').select('*').order('createdAt', { ascending: false });
+      if (!error && data) {
+        setLessons(data);
+      }
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'lessons');
-      setLoading(false);
-    });
-    return unsubscribe;
+    };
+
+    fetchLessons();
+
+    const channel = supabase.channel('realtime_lessons')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lessons' }, (payload) => {
+        fetchLessons();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   // دالة التحقق عند الضغط على زر "مشاهدة"
@@ -120,8 +163,19 @@ const LessonsPage = () => {
             محتوى آمن وحصري مخصص للمشتركين
           </p>
         </div>
-        <div className="bg-brand-green/10 text-brand-green px-6 py-3 rounded-2xl font-bold shadow-inner">
-          {lessons.length} درس مسجل
+        <div className="flex gap-3">
+          {profile?.role === 'teacher' && (
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="bg-brand-navy text-white px-6 py-3 rounded-2xl font-bold shadow-lg hover:bg-brand-navy/90 transition-all flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              إضافة كورس (شهر)
+            </button>
+          )}
+          <div className="bg-brand-green/10 text-brand-green px-6 py-3 rounded-2xl font-bold shadow-inner flex items-center">
+            {lessons.length} درس مسجل
+          </div>
         </div>
       </div>
 
@@ -152,8 +206,9 @@ const LessonsPage = () => {
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
                 
-                <div className="absolute top-4 left-4 bg-brand-green/90 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg">
-                  {lesson.subject}
+                <div className="absolute top-4 left-4 bg-brand-green/90 backdrop-blur-sm text-white px-3 py-1 rounded-lg text-xs font-bold shadow-lg flex gap-2">
+                  <span>{lesson.subject}</span>
+                  {lesson.month && <span className="bg-white/20 px-1 rounded">{lesson.month}</span>}
                 </div>
 
                 {/* نظام الحماية المبتكر: علامة مائية عائمة لمنع سرقة الفيديوهات */}
@@ -229,6 +284,134 @@ const LessonsPage = () => {
           ))}
         </div>
       )}
+
+      {/* Add Lesson Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowAddModal(false)}
+              className="absolute inset-0 bg-brand-navy/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white rounded-[40px] w-full max-w-2xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <h3 className="text-xl font-bold flex items-center gap-2">
+                  <Upload className="w-6 h-6 text-brand-green" />
+                  إضافة كورس (بلاي ليست شهرية)
+                </h3>
+                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-xl">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              <div className="p-8 max-h-[80vh] overflow-y-auto">
+                <form onSubmit={handleAddLesson} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">عنوان الكورس / الدرس</label>
+                      <input 
+                        required
+                        type="text" 
+                        value={lessonForm.title}
+                        onChange={(e) => setLessonForm({...lessonForm, title: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none text-sm"
+                        placeholder="مثال: الوحدة الأولى - الدوال العددية"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">المادة</label>
+                      <input 
+                        required
+                        type="text" 
+                        value={lessonForm.subject}
+                        onChange={(e) => setLessonForm({...lessonForm, subject: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none text-sm"
+                        placeholder="رياضيات، فيزياء..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">شهر الكورس</label>
+                      <select 
+                        value={lessonForm.month}
+                        onChange={(e) => setLessonForm({...lessonForm, month: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none text-sm"
+                      >
+                        {['جانفي', 'فيفري', 'مارس', 'أفريل', 'ماي', 'جوان', 'جويلية', 'أوت', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'].map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">المستوى الدراسي</label>
+                      <input 
+                        required
+                        type="text" 
+                        value={lessonForm.level}
+                        onChange={(e) => setLessonForm({...lessonForm, level: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none text-sm"
+                        placeholder="مثال: 3 ثانوي"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">رابط الصورة المصغرة</label>
+                      <input 
+                        type="url" 
+                        value={lessonForm.thumbnail}
+                        onChange={(e) => setLessonForm({...lessonForm, thumbnail: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none"
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">رابط الفيديو (أو البلاي ليست)</label>
+                      <input 
+                        required
+                        type="url" 
+                        value={lessonForm.videoUrl}
+                        onChange={(e) => setLessonForm({...lessonForm, videoUrl: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none text-left"
+                        placeholder="https://youtube.com/..."
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-bold text-gray-700 mb-2">وصف الكورس</label>
+                      <textarea 
+                        rows={3}
+                        value={lessonForm.description}
+                        onChange={(e) => setLessonForm({...lessonForm, description: e.target.value})}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none resize-none"
+                        placeholder="اكتب وصفاً مختصراً عما سيتعلمه الطالب في هذا الشهر..."
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="bg-blue-50/50 border border-blue-100 text-blue-600 p-4 rounded-xl text-xs font-bold flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
+                    <p>
+                      نظام الكورسات الشهري: يُرجى تجديد المحتوى أو إضافة قائمة تشغيل جديدة مع بداية كل شهر جديد لضمان استمرارية التلاميذ المشتركين.
+                    </p>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="w-full bg-brand-navy text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-brand-navy/90 active:scale-95 transition-all text-lg"
+                  >
+                    نشر الكورس 🚀
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

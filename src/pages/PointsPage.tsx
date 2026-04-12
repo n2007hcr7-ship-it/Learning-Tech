@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-import { db } from '../firebase';
+import { supabase } from '../supabase';
 import { useAuth } from '../App';
 import { motion } from 'motion/react';
 import {
@@ -35,7 +34,7 @@ interface EarnActivity {
 const REWARDS: Reward[] = [
   {
     id: 'live',
-    title: 'دخول البث المباشر',
+    title: 'دخول البث المباشر (Live)',
     description: 'احضر حصصاً مباشرة مع أفضل الأساتذة',
     cost: 25,
     icon: Video,
@@ -44,23 +43,33 @@ const REWARDS: Reward[] = [
     available: true,
   },
   {
-    id: 'chat',
-    title: 'محادثة عادية مع الأستاذ',
-    description: 'اطرح أسئلتك مباشرة على الأستاذ',
-    cost: 100,
-    icon: MessageCircle,
-    color: 'from-blue-500 to-cyan-600',
-    route: '/chats',
+    id: 'playlist',
+    title: 'فتح قائمة تشغيل (باقة)',
+    description: 'مشاهدة جميع دروس قائمة تشغيل محددة',
+    cost: 80,
+    icon: Shield,
+    color: 'from-emerald-500 to-teal-600',
+    route: '/lessons',
     available: true,
   },
   {
-    id: 'premium_chat',
-    title: 'محادثة مميزة VIP',
-    description: 'أولوية قصوى وردود سريعة مضمونة',
-    cost: 250,
-    icon: Crown,
+    id: 'lesson',
+    title: 'فتح درس مدفوع واحد',
+    description: 'مشاهدة درس واحد من اختيارك',
+    cost: 30,
+    icon: BookOpen,
+    color: 'from-blue-500 to-cyan-600',
+    route: '/lessons',
+    available: true,
+  },
+  {
+    id: 'chat',
+    title: 'محادثة عادية (ذكاء اصطناعي)',
+    description: 'سؤال وجواب فوري بواسطة مساعدنا الذكي',
+    cost: 100,
+    icon: MessageCircle,
     color: 'from-amber-500 to-yellow-600',
-    route: '/chats/premium',
+    route: '/chats',
     available: true,
   },
 ];
@@ -103,11 +112,9 @@ const PointsPage = () => {
 
     const fetchData = async () => {
       try {
-        const userRef = doc(db, 'users', user.uid);
-        const snap = await getDoc(userRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setCompletedCount((data.completedLessons || []).length);
+        const { data, error } = await supabase.from('users').select('completed_lessons').eq('id', user.id).single();
+        if (data) {
+          setCompletedCount((data.completed_lessons || []).length);
         }
       } catch (err) {
         console.error(err);
@@ -119,8 +126,30 @@ const PointsPage = () => {
     fetchData();
   }, [user, navigate]);
 
-  const currentPoints = profile?.points || 0;
-  const progressToNext = Math.min((currentPoints % 100) / 100 * 100, 100);
+  const currentPoints = profile?.iq_coins || 0;
+  const monthlyPoints = profile?.iq_coins_monthly || 0;
+  const progressToNext = Math.min((monthlyPoints % 100) / 100 * 100, 100);
+
+  const handleRedeem = async (reward: Reward) => {
+    if (currentPoints < reward.cost) {
+      toast.error('ليس لديك IQ Coins كافية لهذا الطلب');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('redeem_iq_coins', { 
+        service_type: reward.id, 
+        cost: reward.cost 
+      });
+      if (error) throw error;
+      
+      toast.success(`تم استبدال ${reward.cost} IQ بنجاح!`, {
+        description: `يمكنك الآن الاستفادة من خدمة: ${reward.title}`,
+      });
+    } catch (error: any) {
+      toast.error('فشل الاستبدال: ' + (error.message || 'خطأ غير معروف'));
+    }
+  };
 
   if (loading) {
     return (
@@ -195,9 +224,9 @@ const PointsPage = () => {
           className="grid grid-cols-3 gap-4"
         >
           {[
-            { label: 'رصيد النقاط', value: currentPoints, icon: Award, color: 'text-brand-gold' },
+            { label: 'رصيد IQ Coins', value: currentPoints, icon: Award, color: 'text-brand-gold' },
+            { label: 'الترتيب الشهري', value: monthlyPoints, icon: TrendingUp, color: 'text-blue-400' },
             { label: 'دروس مكتملة', value: completedCount, icon: BookOpen, color: 'text-brand-green' },
-            { label: 'نقاط مكتسبة', value: completedCount, icon: TrendingUp, color: 'text-blue-400' },
           ].map((stat, i) => (
             <div key={i} className="bg-white/5 border border-white/5 rounded-3xl p-6 text-center">
               <stat.icon className={`w-7 h-7 mx-auto mb-3 ${stat.color}`} />
@@ -213,9 +242,14 @@ const PointsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="flex items-center gap-3 mb-6">
-            <Gift className="w-6 h-6 text-brand-gold" />
-            <h2 className="text-2xl font-black">متجر المكافآت</h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Gift className="w-6 h-6 text-brand-gold" />
+              <h2 className="text-2xl font-black">متجر المكافآت (Bonus)</h2>
+            </div>
+            <div className="text-xs text-brand-gold font-bold bg-brand-gold/10 px-4 py-1.5 rounded-full">
+              مخصص لاستخدام النقاط حصراً
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -240,7 +274,9 @@ const PointsPage = () => {
 
                   <div className="flex-1">
                     <h3 className="font-bold text-lg leading-tight mb-1">{reward.title}</h3>
-                    <p className="text-gray-400 text-sm leading-relaxed">{reward.description}</p>
+                    <p className="text-gray-400 text-sm leading-relaxed">
+                      {reward.id === 'subscription' ? 'احصل على الباقة المميزة مجاناً باستخدام نقاطك' : reward.description}
+                    </p>
                   </div>
 
                   {/* Cost badge */}
@@ -249,20 +285,20 @@ const PointsPage = () => {
                       canAfford ? 'bg-brand-gold/20 text-brand-gold' : 'bg-white/5 text-gray-500'
                     }`}>
                       <Coins className="w-4 h-4" />
-                      {reward.cost} نقطة
+                      {reward.cost} IQ
                     </div>
 
                     {canAfford ? (
-                      <Link
-                        to={reward.route}
-                        className="flex items-center gap-1 bg-brand-green hover:bg-brand-green/90 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all"
+                      <button
+                        onClick={() => handleRedeem(reward)}
+                        className="flex items-center gap-1 bg-brand-green hover:bg-brand-green/90 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg shadow-brand-green/20"
                       >
-                        استخدم <ArrowRight className="w-4 h-4" />
-                      </Link>
+                        استبدال الآن <ArrowRight className="w-4 h-4" />
+                      </button>
                     ) : (
                       <div className="flex items-center gap-1 text-gray-500 text-xs font-bold">
                         <Lock className="w-4 h-4" />
-                        {reward.cost - currentPoints} نقطة ناقصة
+                        {reward.cost - currentPoints} IQ ناقصة
                       </div>
                     )}
                   </div>
@@ -321,7 +357,7 @@ const PointsPage = () => {
           <div>
             <h3 className="font-bold text-base mb-1 text-brand-green">نظام نقاط آمن ومحمي</h3>
             <p className="text-gray-400 text-sm leading-relaxed">
-              يتم التحقق من كل عملية كسب أو إنفاق للنقاط عبر خوادم Firebase الآمنة. لا يمكن تزوير النقاط أو التلاعب بها من قِبل أي مستخدم، وكل درس مكتمل يُسجَّل مرة واحدة فقط لمنع الغش.
+              يتم التحقق من كل عملية كسب أو إنفاق للنقاط عبر خوادم Supabase الآمنة. لا يمكن تزوير النقاط أو التلاعب بها من قِبل أي مستخدم، وكل درس مكتمل يُسجَّل مرة واحدة فقط لمنع الغش.
             </p>
           </div>
         </motion.div>
