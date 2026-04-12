@@ -1,3 +1,4 @@
+// Supabase client initialization - Triggering fresh build 2026-04-12 11:16
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
