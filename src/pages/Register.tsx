@@ -105,7 +105,13 @@ const Register = () => {
       navigate('/profile');
     } catch (error: any) {
       console.error("DEBUG AUTH ERROR:", error);
-      toast.error('فشل إنشاء الحساب: ' + (error.message || 'خطأ غير معروف'));
+      
+      let errorMessage = error.message || 'خطأ غير معروف';
+      if (errorMessage.toLowerCase().includes('failed to fetch')) {
+        errorMessage = 'فشل الاتصال بخادم قاعدة البيانات (Network Error). يرجى التأكد من اتصال الإنترنت أو إعدادات Supabase.';
+      }
+      
+      toast.error('فشل إنشاء الحساب: ' + errorMessage);
     } finally {
       setLoading(false);
     }
