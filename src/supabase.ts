@@ -7,8 +7,11 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('[CRITICAL] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing in the environment.');
 } else {
-  // Safe logging of the URL and key length to verify they are loaded
-  console.log(`[AUTH] Supabase initialized with URL: ${supabaseUrl.substring(0, 15)}...`);
+  // Safe logging for verification
+  const maskedKey = `...${supabaseAnonKey.slice(-4)}`;
+  const maskedUrl = `${supabaseUrl.substring(0, 15)}...`;
+  console.log(`[AUTH] Supabase initialized. URL: ${maskedUrl} | Key: ${maskedKey}`);
+  
   if (!supabaseUrl.startsWith('https://')) {
     console.warn('[WARNING] Supabase URL does not start with https://. This will likely cause "Failed to fetch" errors.');
   }
