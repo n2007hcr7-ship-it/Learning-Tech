@@ -33,6 +33,9 @@ const Login = () => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/Learning-Tech/`
+        }
       });
       if (error) throw error;
       // Note: Supabase OAuth redirects the page by default, so below lines might not run depending on config.

@@ -137,7 +137,12 @@ const Register = () => {
           <div className="mb-10 space-y-4">
             <button 
               onClick={async () => {
-                const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
+                const { error } = await supabase.auth.signInWithOAuth({ 
+                  provider: 'google',
+                  options: {
+                    redirectTo: `${window.location.origin}/Learning-Tech/`
+                  }
+                });
                 if (error) toast.error('فشل التسجيل بجوجل');
               }}
               className="w-full py-4 rounded-2xl border-2 border-brand-green/20 bg-brand-green/5 font-bold text-sm flex items-center justify-center gap-3 hover:bg-brand-green/10 transition-all text-brand-navy shadow-sm"
