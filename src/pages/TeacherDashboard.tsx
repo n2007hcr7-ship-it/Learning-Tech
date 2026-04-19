@@ -948,7 +948,7 @@ const TeacherDashboard = () => {
 
                   <div className="bg-brand-green/10 p-4 rounded-xl border border-brand-green/20 mb-6">
                     <p className="text-xs font-bold text-brand-green leading-relaxed text-center">
-                      ملاحظة: سيتم اقتطاع 2% عمولة Chargily من كل عملية. المبلغ المتبقي يُقسم بنسبة 70% للأستاذ و 30% للمنصة. حصتك الصافية هي 68.6% من إجمالي ما يدفعه الطالب.
+                      ملاحظة: سيتم اقتطاع 2% عمولة Chargily من كل عملية. المبلغ المتبقي يُقسم بنسبة 80% للأستاذ و 20% للمنصة. حصتك الصافية هي 78.4% من إجمالي ما يدفعه الطالب.
                     </p>
                   </div>
 
