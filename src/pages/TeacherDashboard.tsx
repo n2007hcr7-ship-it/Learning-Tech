@@ -451,7 +451,12 @@ const TeacherDashboard = () => {
                   <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                       <h3 className="font-bold text-lg">آخر الدروس المنشورة</h3>
-                      <button className="text-brand-green text-sm font-bold hover:underline">عرض الكل</button>
+                      <button 
+                        onClick={() => navigate('/lessons')}
+                        className="text-brand-green text-sm font-bold hover:underline"
+                      >
+                        عرض الكل
+                      </button>
                     </div>
                     <div className="divide-y divide-gray-50">
                       {lessons.length === 0 ? (
@@ -533,12 +538,16 @@ const TeacherDashboard = () => {
                     <h3 className="font-bold text-lg mb-6">إجراءات سريعة</h3>
                     <div className="grid grid-cols-2 gap-4">
                       {[
-                        { name: 'الإعدادات', icon: Settings, color: 'bg-gray-100' },
-                        { name: 'التقارير', icon: BarChart3, color: 'bg-blue-50' },
-                        { name: 'الطلاب', icon: Users, color: 'bg-green-50' },
-                        { name: 'الدعم', icon: MessageCircle, color: 'bg-orange-50' },
+                        { name: 'الإعدادات', icon: Settings, color: 'bg-gray-100', tab: 'settings' },
+                        { name: 'التقارير', icon: BarChart3, color: 'bg-blue-50', tab: 'finances' },
+                        { name: 'الطلاب', icon: Users, color: 'bg-green-50', tab: 'students' },
+                        { name: 'الدعم', icon: MessageCircle, color: 'bg-orange-50', action: () => navigate('/chats') },
                       ].map((action) => (
-                        <button key={action.name} className="flex flex-col items-center gap-2 p-4 rounded-2xl hover:bg-gray-50 transition-all">
+                        <button 
+                          key={action.name} 
+                          onClick={action.tab ? () => setActiveTab(action.tab as any) : action.action}
+                          className="flex flex-col items-center gap-2 p-4 rounded-2xl hover:bg-gray-50 transition-all"
+                        >
                           <div className={`w-12 h-12 ${action.color} rounded-xl flex items-center justify-center`}>
                             <action.icon className="w-6 h-6 text-brand-navy" />
                           </div>
