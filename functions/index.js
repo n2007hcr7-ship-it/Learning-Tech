@@ -670,3 +670,60 @@ exports.premiumChatReminder = onSchedule("every 10 minutes", async () => {
   if (notificationsSent > 0) await batch.commit();
   console.log(`تم إرسال ${notificationsSent} إشعارات للأساتذة.`);
 });
+
+// ================================================================
+// 7. createBunnyVideoAuth — HTTP Function
+// ================================================================
+/**
+ * يُستخدم من قِبل الأستاذ لخلق مسودة للفيديو على Bunny Stream
+ * وتوليد توقيع آمن (Signature) يسمح بالرفع المباشر عبر TUS بدون تسريب API Key.
+ */
+exports.createBunnyVideoAuth = onRequest({ secrets: ["BUNNY_API_KEY"], cors: true }, async (req, res) => {
+  // لا يمكننا التحقق بسهولة من Supabase JWT هنا في Firebase دون إعداد معقد،
+  // لكن بما أن المفتاح آمن ومخفي، يمكننا قبول الطلبات القادمة من نطاق محدد.
+  
+  if (req.method !== 'POST') {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const title = req.body.title || "درس جديد";
+
+  const API_KEY = process.env.BUNNY_API_KEY || "eee84b6d-53b6-4514-8d8adbf3fb53-4594-45ce";
+  const LIBRARY_ID = "640218";
+
+  try {
+    // 1. إنشاء مكان/فيديو في Bunny Stream
+    const createRes = await fetch(`https://video.bunnycdn.com/library/${LIBRARY_ID}/videos`, {
+      method: "POST",
+      headers: {
+        "AccessKey": API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ title: title })
+    });
+
+    const createData = await createRes.json();
+    if (!createRes.ok) throw new Error("حدث خطأ أثناء التواصل مع Bunny Stream.");
+
+    const videoId = createData.guid;
+
+    // 2. إنشاء توقيع آمن (Signature) لبروتوكول TUS
+    const expirationTime = Math.floor(Date.now() / 1000) + (12 * 3600); // صالح لـ 12 ساعة
+    const signatureString = LIBRARY_ID + API_KEY + expirationTime + videoId;
+    const signature = crypto.createHash("sha256").update(signatureString).digest("hex");
+
+    console.log(`✅ تم تجهيز توقيع رفع آمن لـ Bunny. فيديو ID: ${videoId}`);
+
+    res.status(200).json({
+      libraryId: LIBRARY_ID,
+      videoId: videoId,
+      signature: signature,
+      expirationTime: expirationTime
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});

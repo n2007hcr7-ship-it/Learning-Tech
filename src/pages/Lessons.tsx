@@ -4,6 +4,7 @@ import { BookOpen, User, Lock, Download, ShieldAlert, PlayCircle, ShieldCheck, P
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../App';
 import { Link } from 'react-router-dom';
+import * as tus from 'tus-js-client';
 
 const LessonsPage = () => {
   const { user, profile } = useAuth();
@@ -18,35 +19,130 @@ const LessonsPage = () => {
     description: '',
     subject: '',
     month: 'جانفي',
-    level: '',
-    thumbnail: '',
-    videoUrl: ''
+    level: ''
   });
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleAddLesson = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || profile.role !== 'teacher') return;
+    
+    if (!videoFile || !thumbnailFile) {
+      setToastMessage({ text: 'الرجاء اختيار ملفي الفيديو والصورة أولاً!', type: 'error' });
+      setTimeout(() => setToastMessage({ text: '', type: '' }), 4000);
+      return;
+    }
+
     try {
+      setIsUploading(true);
+      setToastMessage({ text: 'جاري رفع الملفات... يرجى الانتظار ⏳', type: 'success' });
+      
+      const fileExtVideo = videoFile.name.split('.').pop();
+      const fileNameVideo = `lesson_${Date.now()}.${fileExtVideo}`;
+      
+      const fileExtThumb = thumbnailFile.name.split('.').pop();
+      const fileNameThumb = `thumb_${Date.now()}.${fileExtThumb}`;
+
+      // 1. Upload Thumbnail to Supabase
+      const { data: thumbData, error: thumbError } = await supabase.storage
+        .from('lessons_thumbnails')
+        .upload(fileNameThumb, thumbnailFile);
+        
+      if (thumbError) throw thumbError;
+      
+      const { data: thumbUrlData } = supabase.storage
+        .from('lessons_thumbnails')
+        .getPublicUrl(fileNameThumb);
+
+      // 2. Direct Bunny Stream Video Upload (Local Backend MVP Mode)
+      setToastMessage({ text: 'جاري إنشاء مسودة آمنة للفيديو... 🔐', type: 'success' });
+      
+      const API_KEY = import.meta.env.VITE_BUNNY_API_KEY;
+      const LIBRARY_ID = import.meta.env.VITE_BUNNY_LIBRARY_ID;
+
+      const createRes = await fetch(`https://video.bunnycdn.com/library/${LIBRARY_ID}/videos`, {
+        method: "POST",
+        headers: {
+          "AccessKey": API_KEY,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ title: lessonForm.title })
+      });
+      
+      const createData = await createRes.json();
+      if (!createRes.ok || !createData) throw new Error("فشل تحضير مفاتيح الرفع المستقلة");
+
+      const videoId = createData.guid;
+      const expirationTime = Math.floor(Date.now() / 1000) + (12 * 3600);
+      const signatureString = `${LIBRARY_ID}${API_KEY}${expirationTime}${videoId}`;
+      
+      const msgBuffer = new TextEncoder().encode(signatureString);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      setToastMessage({ text: 'جاري رفع الفيديو (TUS)... يرجى عدم الإغلاق 🚀', type: 'success' });
+
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(videoFile, {
+          endpoint: "https://video.bunnycdn.com/tusupload",
+          retryDelays: [0, 3000, 5000, 10000, 20000],
+          headers: {
+            "AuthorizationSignature": signature,
+            "AuthorizationExpire": String(expirationTime),
+            "VideoId": videoId,
+            "LibraryId": LIBRARY_ID,
+          },
+          metadata: {
+            filetype: videoFile.type,
+            title: lessonForm.title,
+          },
+          onError: (error) => {
+             console.error("TUS Error:", error);
+             reject(error);
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = ((bytesUploaded / bytesTotal) * 100).toFixed(0);
+            setUploadProgress(Number(percentage));
+          },
+          onSuccess: () => {
+             resolve();
+          }
+        });
+        upload.start();
+      });
+
+      const finalVideoUrl = `https://iframe.mediadelivery.net/embed/${LIBRARY_ID}/${videoId}`;
+
+      // 3. Finalize Lesson Entity
       await supabase.from('lessons').insert({
         ...lessonForm,
+        thumbnail: thumbUrlData.publicUrl,
+        videoUrl: finalVideoUrl,
         teacherId: user?.id,
         teacherName: profile.name || 'أستاذ',
         createdAt: new Date().toISOString(),
         views: 0
       });
+      
       setShowAddModal(false);
-      setToastMessage({
-        text: 'تمت إضافة الكورس بنجاح!',
-        type: 'success'
-      });
+      setToastMessage({ text: 'تمت إضافة الكورس ورفع الملفات بنجاح!', type: 'success' });
       setTimeout(() => setToastMessage({ text: '', type: '' }), 4000);
-      setLessonForm({title: '', description: '', subject: '', month: 'جانفي', level: '', thumbnail: '', videoUrl: ''});
+      setLessonForm({title: '', description: '', subject: '', month: 'جانفي', level: ''});
+      setVideoFile(null);
+      setThumbnailFile(null);
+      setUploadProgress(0);
     } catch (err) {
-      setToastMessage({
-        text: 'فشل إضافة الكورس!',
-        type: 'error'
-      });
+      console.error(err);
+      setToastMessage({ text: 'فشل إضافة الكورس! تأكد من إعدادات الرفع الخاصة بك.', type: 'error' });
       setTimeout(() => setToastMessage({ text: '', type: '' }), 4000);
+      setUploadProgress(0);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -360,24 +456,31 @@ const LessonsPage = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-2">رابط الصورة المصغرة</label>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">رفع الصورة المصغرة</label>
                       <input 
-                        type="url" 
-                        value={lessonForm.thumbnail}
-                        onChange={(e) => setLessonForm({...lessonForm, thumbnail: e.target.value})}
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none"
-                        placeholder="https://..."
+                        type="file" 
+                        accept="image/*"
+                        required
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            setThumbnailFile(e.target.files[0]);
+                          }
+                        }}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-brand-green/10 file:text-brand-green hover:file:bg-brand-green/20"
                       />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-bold text-gray-700 mb-2">رابط الفيديو (أو البلاي ليست)</label>
+                      <label className="block text-sm font-bold text-gray-700 mb-2">رفع ملف الفيديو</label>
                       <input 
+                        type="file" 
+                        accept="video/*"
                         required
-                        type="url" 
-                        value={lessonForm.videoUrl}
-                        onChange={(e) => setLessonForm({...lessonForm, videoUrl: e.target.value})}
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none text-left"
-                        placeholder="https://youtube.com/..."
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            setVideoFile(e.target.files[0]);
+                          }
+                        }}
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-green outline-none text-left file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-brand-green/10 file:text-brand-green hover:file:bg-brand-green/20"
                         dir="ltr"
                       />
                     </div>
@@ -402,9 +505,12 @@ const LessonsPage = () => {
 
                   <button 
                     type="submit" 
-                    className="w-full bg-brand-navy text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-brand-navy/90 active:scale-95 transition-all text-lg"
+                    disabled={isUploading}
+                    className={`w-full text-white py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-all text-lg flex items-center justify-center gap-2 ${
+                      isUploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-brand-navy hover:bg-brand-navy/90'
+                    }`}
                   >
-                    نشر الكورس 🚀
+                    {isUploading ? `جاري الرفع... ${uploadProgress > 0 ? uploadProgress + '%' : 'تحضير'}` : 'نشر الكورس 🚀'}
                   </button>
                 </form>
               </div>

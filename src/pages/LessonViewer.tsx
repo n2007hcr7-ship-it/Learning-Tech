@@ -73,13 +73,35 @@ const LessonViewer = () => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       setIsBlurred(document.hidden);
-      if (document.hidden && videoRef.current) {
-        videoRef.current.pause();
+      if (document.hidden) {
+        if (videoRef.current) videoRef.current.pause();
+        if (profile?.role === 'student') {
+          toast.error('⚠️ تحذير: لا يُسمح بتصوير الشاشة أو مغادرة هذه النافذة لحماية حقوق الملكية!', {
+            duration: 6000,
+            style: { background: '#ef4444', color: 'white', border: 'none', fontWeight: 'bold' }
+          });
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
+  }, [profile]);
+
+  // استماع لأحداث مشغل Bunny (Iframe)
+  useEffect(() => {
+    const handleMessage = (e: MessageEvent) => {
+      try {
+        const message = JSON.parse(e.data);
+        if (message.event === 'ended') {
+          handleVideoEnd();
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [profile, user]);
 
   // دالة تُستدعى عند انتهاء التلميذ من مشاهدة الفيديو بالكامل
   const handleVideoEnd = async () => {
@@ -179,21 +201,31 @@ const LessonViewer = () => {
             ))}
           </div>
 
-          <video 
-            ref={videoRef}
-            src={lesson.url || lesson.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"}
-            controls
-            controlsList="nodownload noremoteplayback"
-            disablePictureInPicture
-            onContextMenu={(e) => e.preventDefault()}
-            onEnded={handleVideoEnd}
-            onTimeUpdate={handleTimeUpdate}
-            onSeeking={handleSeeking}
-            onSeeked={handleSeeked}
-            className="w-full aspect-video object-contain"
-          >
-            متصفحك لا يدعم مشغل الفيديو.
-          </video>
+          {(lesson.url || lesson.videoUrl)?.includes("iframe.mediadelivery.net") ? (
+            <iframe
+              src={lesson.url || lesson.videoUrl}
+              loading="lazy"
+              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+              allowFullScreen
+              className="w-full aspect-video border-0 rounded-b-3xl"
+            />
+          ) : (
+            <video 
+              ref={videoRef}
+              src={lesson.url || lesson.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"}
+              controls
+              controlsList="nodownload noremoteplayback"
+              disablePictureInPicture
+              onContextMenu={(e) => e.preventDefault()}
+              onEnded={handleVideoEnd}
+              onTimeUpdate={handleTimeUpdate}
+              onSeeking={handleSeeking}
+              onSeeked={handleSeeked}
+              className="w-full aspect-video object-contain bg-black rounded-b-3xl"
+            >
+              متصفحك لا يدعم مشغل الفيديو.
+            </video>
+          )}
 
           {isVideoEnded && profile?.role === 'student' && (
             <motion.div 

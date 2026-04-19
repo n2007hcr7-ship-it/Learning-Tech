@@ -19,6 +19,32 @@ const LiveRoom = () => {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [agoraLoading, setAgoraLoading] = useState(false);
   const [session, setSession] = useState<any>(null);
+  const [hasPaidStream, setHasPaidStream] = useState(false);
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [isBlackScreen, setIsBlackScreen] = useState(false);
+  const autoStartTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const isUploadingRef = useRef(false);
+
+  useEffect(() => {
+    if (profile?.role === 'student') {
+      const handleVisibility = () => {
+        setIsBlackScreen(document.hidden);
+        if (document.hidden) {
+          toast.warning('لا يُسمح بتسجيل الشاشة! يرجى العودة لتبويب الدرس.');
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+      return () => document.removeEventListener('visibilitychange', handleVisibility);
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    return () => {
+      if (autoStartTimerRef.current) clearTimeout(autoStartTimerRef.current);
+    };
+  }, []);
 
   // ── Session State Logic ──────────────────────────────────────
   useEffect(() => {
@@ -36,36 +62,90 @@ const LiveRoom = () => {
     return () => { supabase.removeChannel(channel); }
   }, [roomId]);
 
-  const startBroadcast = async () => {
+  const handlePayStream = async () => {
     if (profile?.role !== 'teacher' || !session) return;
     try {
-      setAgoraLoading(true);
+      setProcessingPayment(true);
       
-      // 1. دفع تكاليف البث من رصيد الأستاذ باستخدام RPC
       const { data: rpcData, error: rpcError } = await supabase.rpc('pay_for_agora_stream', { 
         p_room_id: roomId, 
         p_duration: session.duration || 60, 
         p_max_attendees: session.maxAttendees || 50 
       });
       if (rpcError) throw rpcError;
-
-      // 2. تفعيل خدمة Agora
-      await initAgora();
-
-      // ملاحظة: تم نقل تحديث حالة البث (status: 'live') إلى الدالة السحابية لإكماله بأمان بعد الدفع.
       
-      toast.success('تم خصم تكاليف البث وبدأت الحصة بنجاح!');
+      setHasPaidStream(true);
+      toast.success('تم دفع تكاليف البث بنجاح! يمكنك الآن تفعيل البدء التلقائي.');
     } catch (e: any) {
       console.error(e);
       const msg = e.message?.includes('resource-exhausted') 
         ? 'رصيدك غير كافٍ لتغطية تكاليف هذا البث.' 
-        : 'فشل بدء البث، يرجى المحاولة لاحقاً.';
+        : 'فشل عملية الدفع، يرجى المحاولة لاحقاً.';
       toast.error(msg);
       if (e.message?.includes('resource-exhausted')) {
         navigate('/payments');
       }
     } finally {
-      setAgoraLoading(false);
+      setProcessingPayment(false);
+    }
+  };
+
+  const handleAutoStart = () => {
+    if (!session?.time) {
+      toast.error('لم يتم تحديد وقت للبث!');
+      return;
+    }
+    
+    const startTimeStamp = new Date(session.time).getTime();
+    const nowStamp = new Date().getTime();
+    const delay = startTimeStamp - nowStamp;
+    
+    if (delay <= 0) {
+      initAgora();
+    } else {
+      setAutoStartEnabled(true);
+      toast.success(`تم تفعيل البدء التلقائي! سيبدأ البث خلال ${Math.ceil(delay / 60000)} دقيقة.`);
+      autoStartTimerRef.current = setTimeout(() => {
+        initAgora();
+        setAutoStartEnabled(false);
+      }, delay);
+    }
+  };
+
+  const handleUploadRecord = async (blob: Blob) => {
+    if (isUploadingRef.current) return;
+    isUploadingRef.current = true;
+    toast.info('جاري معالجة وتسجيل الحصة المعروضة...', { duration: 10000 });
+    
+    try {
+      const fileName = `live_${roomId}_${Date.now()}.webm`;
+      const { data, error } = await supabase.storage.from('lessons_videos').upload(fileName, blob, { contentType: 'video/webm' });
+      
+      if (error) {
+        throw error;
+      }
+      
+      const { data: urlData } = supabase.storage.from('lessons_videos').getPublicUrl(fileName);
+      
+      await supabase.from('lessons').insert({
+         title: session.title + ' (تسجيل البث المباشر)',
+         description: `تسجيل حصة البث المباشر. السعر: ${session.price} د.ج`,
+         subject: session.subject,
+         month: session.month || 'عام',
+         level: session.level || 'جميع المستويات',
+         videoUrl: urlData.publicUrl,
+         thumbnail: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b', // Education default
+         teacherId: user?.id,
+         teacherName: profile?.name || 'أستاذ',
+         views: 0
+      });
+      
+      toast.success('تم حفظ الحصة ونشرها بنجاح!');
+    } catch(err) {
+      console.error(err);
+      toast.error('لم يتم حفظ تسجيل الحصة.');
+    } finally {
+      isUploadingRef.current = false;
     }
   };
 
@@ -142,7 +222,7 @@ const LiveRoom = () => {
       // 2. الانضمام للقناة
       await agoraClient.join(AGORA_APP_ID, roomId, data.token, uid);
 
-      // 3. إذا كان أستاذاً: تشغيل وبث الكاميرا/الميكروفون
+      // 3. إذا كان أستاذاً: تشغيل وبث الكاميرا/الميكروفون وتسجيلها
       if (profile?.role === 'teacher') {
         const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         setLocalAudioTrack(audioTrack);
@@ -153,6 +233,30 @@ const LiveRoom = () => {
         }
         
         await agoraClient.publish([audioTrack, videoTrack]);
+        
+        try {
+          const mediaStream = new MediaStream([
+            videoTrack.getMediaStreamTrack(),
+            audioTrack.getMediaStreamTrack()
+          ]);
+          const recorder = new MediaRecorder(mediaStream, { mimeType: 'video/webm' });
+          
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+          };
+          
+          recorder.onstop = () => {
+             const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+             recordedChunksRef.current = [];
+             handleUploadRecord(blob);
+          };
+          
+          mediaRecorderRef.current = recorder;
+          recorder.start();
+          setIsRecording(true);
+        } catch(e) {
+          console.error('Failed to start MediaRecorder:', e);
+        }
       }
 
       // 4. معالجة المستخدمين الآخرين
@@ -330,14 +434,27 @@ const LiveRoom = () => {
                     <p className="text-[9px] text-gray-400 mt-1">* سيتم خصمها من رصيدك عند البدء</p>
                   </div>
 
-                  <button 
-                    onClick={startBroadcast}
-                    disabled={agoraLoading}
-                    className="bg-brand-green text-white px-10 py-4 rounded-2xl font-bold text-lg hover:bg-brand-green/90 transition-all shadow-xl shadow-brand-green/20 flex items-center gap-3 active:scale-95 w-full justify-center"
-                  >
-                    {agoraLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Play className="w-6 h-6 fill-current" />}
-                    ادفع وابدأ البث المباشر
-                  </button>
+                  {hasPaidStream ? (
+                    <button 
+                      onClick={handleAutoStart}
+                      disabled={autoStartEnabled || agoraLoading}
+                      className={`text-white px-10 py-4 rounded-2xl font-bold text-lg transition-all shadow-xl flex items-center justify-center gap-3 w-full ${
+                        autoStartEnabled ? 'bg-orange-500 hover:bg-orange-600' : 'bg-brand-green hover:bg-brand-green/90 shadow-brand-green/20 active:scale-95'
+                      }`}
+                    >
+                      {autoStartEnabled ? <Timer className="w-6 h-6 animate-pulse" /> : <Play className="w-6 h-6 fill-current" />}
+                      {autoStartEnabled ? 'البدء التلقائي مفعل (في الانتظار)' : 'تفعيل البدء التلقائي'}
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handlePayStream}
+                      disabled={processingPayment}
+                      className="bg-brand-gold text-brand-navy px-10 py-4 rounded-2xl font-bold text-lg hover:bg-brand-gold/90 transition-all shadow-xl shadow-brand-gold/20 flex items-center gap-3 active:scale-95 w-full justify-center"
+                    >
+                      {processingPayment ? <Loader2 className="w-6 h-6 animate-spin" /> : <CreditCard className="w-6 h-6" />}
+                      دفع تكاليف البث
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -349,6 +466,15 @@ const LiveRoom = () => {
                 <h3 className="text-xl font-bold">عذراً.. القاعة ممتلئة!</h3>
                 <p className="text-sm text-gray-400">لقد وصل البث المباشر للحد الأقصى من الحضور ({session.maxAttendees} طالب) الذي حدده الأستاذ.</p>
                 <button onClick={() => navigate('/live')} className="text-brand-green text-sm font-bold underline mt-4">العودة للدروس</button>
+              </div>
+            )}
+
+            {/* حجب الشاشة لمنع التصوير للتلميذ */}
+            {isBlackScreen && profile?.role === 'student' && (
+              <div className="absolute inset-0 z-50 bg-black flex flex-col items-center justify-center text-white">
+                <VideoOff className="w-16 h-16 text-red-500 mb-4 animate-bounce" />
+                <h2 className="text-2xl font-bold mb-2">تسجيل الشاشة غير مسموح</h2>
+                <p className="text-gray-400">يرجى العودة إلى التبويب لمواصلة المشاهدة بصورة طبيعية.</p>
               </div>
             )}
 
@@ -416,7 +542,17 @@ const LiveRoom = () => {
               <h2 className="text-xl font-bold text-brand-navy">بث مباشر: جلسة تعليمية تفاعلية</h2>
               <p className="text-gray-500 text-sm">معرف الغرفة: {roomId}</p>
             </div>
-            <button onClick={() => navigate('/live')} className="text-red-500 font-bold hover:underline">مغادرة</button>
+            <button 
+              onClick={() => {
+                if (profile?.role === 'teacher' && mediaRecorderRef.current && isRecording) {
+                  mediaRecorderRef.current.stop();
+                }
+                navigate('/live');
+              }} 
+              className="text-red-500 font-bold hover:underline"
+            >
+              مغادرة
+            </button>
           </div>
         </div>
 
