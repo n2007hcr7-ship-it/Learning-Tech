@@ -19,7 +19,11 @@ const NormalChat = () => {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [iqCoins, setIqCoins] = useState(0);
+  const [aiExpiry, setAiExpiry] = useState<string | null>(null);
+  const [isAiActive, setIsAiActive] = useState(false);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectedChat = chats.find(c => c.id === selectedChatId);
   const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
@@ -39,14 +43,23 @@ const NormalChat = () => {
       setLoading(false);
     };
 
-    // جلب رصيد IQ Coins
-    const fetchCoins = async () => {
-      const { data } = await supabase.from('users').select('iq_coins').eq('id', user.id).single();
-      if (data) setIqCoins(data.iq_coins || 0);
+    // جلب رصيد IQ Coins وحالة اشتراك الذكاء الاصطناعي
+    const fetchUserData = async () => {
+      const { data } = await supabase.from('users').select('iq_coins, ai_subscription_expiry').eq('id', user.id).single();
+      if (data) {
+        setIqCoins(data.iq_coins || 0);
+        setAiExpiry(data.ai_subscription_expiry);
+        
+        if (data.ai_subscription_expiry) {
+          const now = new Date();
+          const expiry = new Date(data.ai_subscription_expiry);
+          setIsAiActive(expiry > now);
+        }
+      }
     };
 
     fetchChats();
-    fetchCoins();
+    fetchUserData();
 
     const channel = supabase.channel('realtime_chats')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, () => fetchChats())
@@ -100,17 +113,78 @@ const NormalChat = () => {
     return () => { supabase.removeChannel(channel); };
   }, [selectedChatId]);
 
+  // تفعيل المساعد الذكي (300 دج)
+  const activateAiSubscription = async () => {
+    if (!user || profile?.role !== 'student') return;
+    const price = 300;
+
+    if ((profile?.balance || 0) < price) {
+      toast.error('رصيدك غير كافٍ. تحتاج إلى 300 دج لتفعيل المساعد الذكي لمدة شهر.');
+      return;
+    }
+
+    try {
+      // خصم الرصيد
+      const { error: payError } = await supabase.rpc('process_service_payment', { 
+        amount: price, 
+        reason: 'ai_assistant_subscription', 
+        teacher_id: null 
+      });
+      if (payError) throw payError;
+
+      // تحديث تاريخ الانتهاء (30 يوم من الآن)
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+      
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ ai_subscription_expiry: expiryDate.toISOString() })
+        .eq('id', user.id);
+      
+      if (updateError) throw updateError;
+
+      setIsAiActive(true);
+      setAiExpiry(expiryDate.toISOString());
+      toast.success('تم تفعيل المساعد الذكي بنجاح لمدة 30 يوم! 🎉');
+    } catch (err) {
+      console.error('Error activating AI:', err);
+      toast.error('حدث خطأ أثناء تفعيل الاشتراك.');
+    }
+  };
+
+  // معالجة الملفات (صور/صوت)
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      setAttachments([{
+        inlineData: {
+          data: base64String,
+          mimeType: file.type
+        },
+        preview: URL.createObjectURL(file)
+      }]);
+    };
+    reader.readAsDataURL(file);
+  };
+
   // إرسال رسالة + رد الذكاء الاصطناعي تلقائياً
   const handleSend = async () => {
-    if (!message.trim() || !user || !selectedChatId || !selectedChat) return;
+    if ((!message.trim() && attachments.length === 0) || !user || !selectedChatId || !selectedChat) return;
     const userMsg = message;
+    const currentAttachments = [...attachments];
+    
     setMessage('');
+    setAttachments([]);
 
     try {
       // 1. حفظ رسالة التلميذ
       const msgData = {
         chatId: selectedChatId,
-        text: userMsg,
+        text: userMsg || 'صورة/ملف مرسل',
         senderId: user.id,
         senderName: profile?.name || 'تلميذ',
         teacherId: selectedChat.teacherId,
@@ -120,26 +194,45 @@ const NormalChat = () => {
         isAI: false
       };
       await supabase.from('messages').insert(msgData);
-      await supabase.from('chats').update({ lastMessage: userMsg, updatedAt: new Date().toISOString() }).eq('id', selectedChatId);
+      await supabase.from('chats').update({ lastMessage: userMsg || 'تم إرسال وسائط', updatedAt: new Date().toISOString() }).eq('id', selectedChatId);
 
-      // 2. رد الذكاء الاصطناعي (Gemini)
+      // 2. التحقق من اشتراك الذكاء الاصطناعي
+      if (!isAiActive) {
+        // إذا لم يكن مشتركاً، لن يرد الذكاء الاصطناعي
+        return;
+      }
+
+      // 3. رد الذكاء الاصطناعي (Gemini 1.5 Flash - Gemma Style)
       setAiTyping(true);
-      const teacherSubject = selectedChat.teacherSubject || 'علوم عامة';
-      const systemPrompt = `أنت مساعد تعليمي ذكي خبير في مادة ${teacherSubject}. أجب باللغة العربية بشكل واضح ومبسط مناسب للتلميذ. أجبتك تكون مختصرة ومفيدة.`;
       
-      const response = await ai.models.generateContent({
-        model: 'gemma-4-26b',
-        contents: `${systemPrompt}\n\nسؤال التلميذ: ${userMsg}`
-      });
-      
-      const aiReply = response.text || 'عذراً، لم أتمكن من فهم السؤال. حاول مرة أخرى.';
+      const systemPrompt = `أنت هو المساعد التعليمي الرسمي "قما" (Gemma) لمنصة Learning Tech في الجزائر.
+تعتمد في إجاباتك كلياً على أحدث المناهج الوزارية والتربوية الجزائرية لجميع الأطوار (ابتدائي، متوسط، ثانوي، جامعي).
 
-      // 3. حفظ رد الذكاء الاصطناعي
+قواعد الإجابة:
+1. عند حل التمارين (نصية أو مصورة): لا تعطِ الحل مباشرة أبداً في البداية.
+2. ابحث أولاً عن تلميحات ذكية وخطوات توضيحية تساعد الطالب على التفكير وحل التمرين بنفسه.
+3. إذا طلب الطالب الحل صراحة أو عجز عن الفهم بعد التلميحات، قدم له الحل النموذجي المفصل حسب المنهج الجزائري.
+4. تواصل باللهجة الجزائرية البيضاء المهذبة أو العربية الفصحى المبسطة.
+5. ردك يكون نصياً فقط وبناءً ومحفزاً.`;
+
+      let model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      const promptParts = [
+        systemPrompt,
+        ...currentAttachments,
+        `سؤال التلميذ: ${userMsg}`
+      ];
+
+      const result = await model.generateContent(promptParts);
+      const response = await result.response;
+      const aiReply = response.text();
+
+      // 4. حفظ رد الذكاء الاصطناعي
       const aiMsgData = {
         chatId: selectedChatId,
         text: aiReply,
         senderId: selectedChat.teacherId,
-        senderName: `مساعد ذكي (أستاذ ${selectedChat.teacherName?.split(' ')[0] || ''})`,
+        senderName: `المساعد الذكي (قما 2)`,
         teacherId: selectedChat.teacherId,
         isPremium: false,
         createdAt: new Date().toISOString(),
@@ -150,7 +243,7 @@ const NormalChat = () => {
       
     } catch (error) {
       console.error('Error sending message:', error);
-      toast.error('تعذّر إرسال الرسالة');
+      toast.error('تعذّر إرسال الرسالة أو معالجة الرد الذكي');
     } finally {
       setAiTyping(false);
     }
@@ -312,10 +405,28 @@ const NormalChat = () => {
                       {iqCoins} IQ
                     </div>
                     <div className="bg-purple-50 px-3 py-1 rounded-lg text-[10px] font-bold text-purple-600">
-                      شات + ذكاء اصطناعي
+                      {isAiActive ? 'المساعد الذكي: مفعل ✅' : 'المساعد الذكي: غير مفعل ❌'}
                     </div>
                   </div>
                 </div>
+
+                {!isAiActive && profile?.role === 'student' && (
+                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4 flex items-center justify-between">
+                    <div className="text-white">
+                      <p className="text-sm font-bold flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-yellow-400" />
+                        فعل المساعد الذكي (Gemma 2) للرد على استفساراتك فوراً!
+                      </p>
+                      <p className="text-[10px] opacity-80">ردود فورية تدعم الصور والصوت حسب المنهج الجزائري.</p>
+                    </div>
+                    <button 
+                      onClick={activateAiSubscription}
+                      className="bg-white text-purple-600 px-6 py-2 rounded-xl font-bold text-xs hover:bg-white/90 transition-all shadow-lg"
+                    >
+                      تفعيل بـ 300 دج/شهر
+                    </button>
+                  </div>
+                )}
 
               {/* Messages */}
               <div className="flex-1 p-6 overflow-y-auto space-y-4">
@@ -371,13 +482,43 @@ const NormalChat = () => {
 
               {/* Input */}
               <div className="p-6 bg-white border-t border-gray-100">
+                {attachments.length > 0 && (
+                  <div className="mb-4 flex gap-2">
+                    {attachments.map((at, i) => (
+                      <div key={i} className="relative group">
+                        <img src={at.preview} className="w-20 h-20 object-cover rounded-xl border-2 border-brand-green" alt="" />
+                        <button 
+                          onClick={() => setAttachments([])}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-3">
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-4 rounded-2xl bg-gray-50 text-gray-500 hover:bg-gray-100 transition-all border border-gray-100"
+                    >
+                      <Plus className="w-6 h-6" />
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*,audio/*"
+                      onChange={handleFileUpload}
+                    />
+                  </div>
                   <input 
                     type="text" 
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="اكتب رسالتك هنا..."
+                    placeholder={isAiActive ? "اكتب سؤالك أو ارفع صورة تمرين..." : "اكتب رسالتك هنا..."}
                     className="flex-1 bg-gray-50 border-none rounded-2xl px-6 py-4 text-sm focus:ring-2 focus:ring-brand-green transition-all"
                   />
                   <button 
