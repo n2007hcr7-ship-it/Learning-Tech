@@ -941,20 +941,6 @@ const TeacherDashboard = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة الاشتراك الشهري (يمكن أن تكون 0 دج)</label>
-                    <div className="relative">
-                      <input 
-                        type="number" 
-                        min="0"
-                        value={pricingForm.subscription}
-                        onChange={(e) => setPricingForm({...pricingForm, subscription: Number(e.target.value)})}
-                        className="w-full bg-blue-50/50 border border-blue-100/50 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                      <Users className="absolute left-4 top-3 w-5 h-5 text-blue-400" />
-                    </div>
-                  </div>
-
                   <div className="bg-brand-green/10 p-4 rounded-xl border border-brand-green/20 mb-6">
                     <p className="text-xs font-bold text-brand-green leading-relaxed text-center">
                       ملاحظة: سيتم اقتطاع 2% عمولة Chargily من كل عملية. المبلغ المتبقي يُقسم بنسبة 80% للأستاذ و 20% للمنصة. حصتك الصافية هي 78.4% من إجمالي ما يدفعه الطالب.

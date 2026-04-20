@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.users (
   iq_coins INTEGER DEFAULT 0,
   iq_coins_monthly INTEGER DEFAULT 0,
   avatar_url TEXT,
+  unlocked_lessons UUID[] DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
@@ -47,9 +48,12 @@ CREATE TABLE IF NOT EXISTS public.lessons (
   month TEXT,
   level TEXT,
   thumbnail TEXT,
-  "videoUrl" TEXT NOT NULL,
+  "videoUrl" TEXT,
   "teacherId" UUID REFERENCES public.users(id),
   "teacherName" TEXT,
+  price NUMERIC DEFAULT 0,
+  type TEXT DEFAULT 'video',
+  videos JSONB DEFAULT '[]',
   views INTEGER DEFAULT 0,
   "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

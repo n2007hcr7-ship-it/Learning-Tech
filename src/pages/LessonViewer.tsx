@@ -12,11 +12,13 @@ const LessonViewer = () => {
   const { user, profile } = useAuth();
   
   const [lesson, setLesson] = useState<any>(null);
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showConfetti, setShowConfetti] = useState(false);
   const [isVideoEnded, setIsVideoEnded] = useState(false);
   const [isBlurred, setIsBlurred] = useState(false);
   const [iqCoins, setIqCoins] = useState(0);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastValidTimeRef = useRef(0);
@@ -31,6 +33,17 @@ const LessonViewer = () => {
         const { data, error } = await supabase.from('lessons').select('*').eq('id', id).single();
         if (data && !error) {
           setLesson(data);
+          
+          // Check Authorization
+          const unlocked = profile?.unlocked_lessons?.includes(data.id) || profile?.role === 'teacher';
+          const free = data.price === 0;
+          
+          if (!unlocked && !free) {
+            toast.error('عذراً، يجب شراء هذه الدورة لمشاهدتها 🔒');
+            navigate('/lessons');
+            return;
+          }
+          setIsAuthorized(true);
         } else {
           toast.error('عذراً، هذا الدرس غير موجود أو تم حذفه');
           navigate('/lessons');
@@ -141,7 +154,12 @@ const LessonViewer = () => {
     );
   }
 
-  if (!lesson) return null;
+  if (!lesson || !isAuthorized) return null;
+
+  const currentVideo = lesson.videos?.[activeVideoIndex] || { 
+    url: lesson.videoUrl || lesson.url, 
+    title: lesson.title 
+  };
 
   return (
     <div className="min-h-screen bg-brand-navy text-white relative overflow-hidden pb-20">
@@ -179,63 +197,104 @@ const LessonViewer = () => {
           </div>
         </div>
 
-        {/* Video Player Section */}
-        <div className="bg-black/40 rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative mb-8">
+        {/* Video Player & Playlist Section (YouTube Style) */}
+        <div className="flex flex-col lg:flex-row gap-6 mb-8 group/main">
           
-          {/* 🔒 شاشة سوداء عند تبديل التبويب (منع تصوير الشاشة) */}
-          {isBlurred && (
-            <div className="absolute inset-0 bg-black z-30 flex flex-col items-center justify-center gap-4">
-              <ShieldCheck className="w-16 h-16 text-green-400" />
-              <p className="text-white font-bold text-xl">🔒 محتوى محمي</p>
-              <p className="text-gray-400 text-sm">يُرجى العودة لهذه الصفحة لمواصلة المشاهدة</p>
-            </div>
-          )}
-
-          {/* علامة مائية ديناميكية */}
-          <div className="absolute inset-0 pointer-events-none select-none z-10 overflow-hidden">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="absolute text-white/5 font-black text-lg rotate-45 whitespace-nowrap"
-                style={{ top: `${(i * 18) - 5}%`, left: `${i % 2 === 0 ? '-10%' : '10%'}` }}>
-                {watermarkText} • LEARNING TECH •
+          {/* Main Player */}
+          <div className="flex-1 bg-black/40 rounded-[2.5rem] overflow-hidden border border-white/5 shadow-2xl relative">
+            {/* 🔒 شاشة سوداء عند تبديل التبويب (منع تصوير الشاشة) */}
+            {isBlurred && (
+              <div className="absolute inset-0 bg-black z-30 flex flex-col items-center justify-center gap-4">
+                <ShieldCheck className="w-16 h-16 text-green-400" />
+                <p className="text-white font-bold text-xl">🔒 محتوى محمي</p>
+                <p className="text-gray-400 text-sm">يُرجى العودة لهذه الصفحة لمواصلة المشاهدة</p>
               </div>
-            ))}
+            )}
+
+            {/* علامة مائية ديناميكية */}
+            <div className="absolute inset-0 pointer-events-none select-none z-10 overflow-hidden">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="absolute text-white/5 font-black text-lg rotate-45 whitespace-nowrap"
+                  style={{ top: `${(i * 18) - 5}%`, left: `${i % 2 === 0 ? '-10%' : '10%'}` }}>
+                  {watermarkText} • LEARNING TECH •
+                </div>
+              ))}
+            </div>
+
+            {currentVideo.url?.includes("iframe.mediadelivery.net") ? (
+              <iframe
+                key={currentVideo.url} // Force reload on video switch
+                src={currentVideo.url}
+                loading="lazy"
+                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                allowFullScreen
+                className="w-full aspect-video border-0 rounded-b-3xl"
+              />
+            ) : (
+              <video 
+                key={currentVideo.url} // Force reload
+                ref={videoRef}
+                src={currentVideo.url || "https://www.w3schools.com/html/mov_bbb.mp4"}
+                controls
+                controlsList="nodownload noremoteplayback"
+                disablePictureInPicture
+                onContextMenu={(e) => e.preventDefault()}
+                onEnded={handleVideoEnd}
+                onTimeUpdate={handleTimeUpdate}
+                onSeeking={handleSeeking}
+                onSeeked={handleSeeked}
+                className="w-full aspect-video object-contain bg-black rounded-b-3xl"
+              >
+                متصفحك لا يدعم مشغل الفيديو.
+              </video>
+            )}
+
+            {isVideoEnded && profile?.role === 'student' && (
+              <motion.div 
+                initial={{ opacity: 0, y: 50 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-brand-green text-white px-8 py-4 rounded-2xl shadow-xl font-bold flex items-center gap-3 z-20"
+              >
+                <Award className="w-6 h-6" />
+                تم إضافة 1 نقطة إلى محفظتك التعليمية بنجاح 🎁
+              </motion.div>
+            )}
           </div>
 
-          {(lesson.url || lesson.videoUrl)?.includes("iframe.mediadelivery.net") ? (
-            <iframe
-              src={lesson.url || lesson.videoUrl}
-              loading="lazy"
-              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-              allowFullScreen
-              className="w-full aspect-video border-0 rounded-b-3xl"
-            />
-          ) : (
-            <video 
-              ref={videoRef}
-              src={lesson.url || lesson.videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4"}
-              controls
-              controlsList="nodownload noremoteplayback"
-              disablePictureInPicture
-              onContextMenu={(e) => e.preventDefault()}
-              onEnded={handleVideoEnd}
-              onTimeUpdate={handleTimeUpdate}
-              onSeeking={handleSeeking}
-              onSeeked={handleSeeked}
-              className="w-full aspect-video object-contain bg-black rounded-b-3xl"
-            >
-              متصفحك لا يدعم مشغل الفيديو.
-            </video>
-          )}
-
-          {isVideoEnded && profile?.role === 'student' && (
-            <motion.div 
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-brand-green text-white px-8 py-4 rounded-2xl shadow-xl font-bold flex items-center gap-3 z-20"
-            >
-              <Award className="w-6 h-6" />
-              تم إضافة 1 نقطة إلى محفظتك التعليمية بنجاح 🎁
-            </motion.div>
+          {/* Playlist Sidebar (YouTube Style) */}
+          {lesson.type === 'playlist' && lesson.videos?.length > 1 && (
+            <div className="w-full lg:w-80 bg-white/5 border border-white/5 rounded-[2.5rem] p-6 backdrop-blur-sm max-h-[500px] overflow-y-auto custom-scrollbar">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-brand-green">
+                <PlayCircle className="w-5 h-5" /> قائمة فيديوهات الدورة
+              </h3>
+              <div className="space-y-3">
+                {lesson.videos.map((vid: any, idx: number) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setActiveVideoIndex(idx);
+                      setIsVideoEnded(false);
+                      lastValidTimeRef.current = 0;
+                    }}
+                    className={`w-full text-right p-4 rounded-2xl border transition-all flex flex-col gap-1 group/item ${
+                      activeVideoIndex === idx 
+                        ? 'bg-brand-green/20 border-brand-green shadow-lg shadow-brand-green/10' 
+                        : 'bg-white/5 border-white/5 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-black p-1 rounded-md px-2 ${activeVideoIndex === idx ? 'bg-brand-green text-white' : 'bg-white/10 text-gray-400'}`}>
+                        {idx + 1}
+                      </span>
+                      {activeVideoIndex === idx && <div className="text-[10px] bg-brand-green text-white px-2 py-0.5 rounded-full animate-pulse">جاري المشاهدة</div>}
+                    </div>
+                    <span className={`font-bold line-clamp-2 mt-2 leading-relaxed ${activeVideoIndex === idx ? 'text-white' : 'text-gray-400'}`}>
+                      {vid.title}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
