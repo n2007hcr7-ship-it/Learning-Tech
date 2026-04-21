@@ -71,7 +71,7 @@ const Navbar = () => {
     { name: 'الرئيسية', path: '/', icon: Home },
     { name: 'الدروس', path: '/lessons', icon: BookOpen },
     { name: 'البث المباشر', path: '/live', icon: Video },
-    { name: 'شات عادية', path: '/chats', icon: MessageCircle },
+    { name: 'دردشة ذكية (مجانية)', path: '/chats', icon: MessageCircle },
     { name: 'شات مميزة', path: '/chats/premium', icon: Zap },
     { name: 'الأرشيف', path: '/archive', icon: ShieldCheck },
     { name: 'لوحة الشرف', path: '/leaderboard', icon: Trophy },

@@ -66,7 +66,6 @@ const TeacherDashboard = () => {
 
   const [pricingForm, setPricingForm] = useState({
     subscription: 0,
-    normalChat: 300,
     premiumChat: 1000,
     liveStream: 500
   });
@@ -77,7 +76,6 @@ const TeacherDashboard = () => {
     if (teacherData?.pricing) {
       setPricingForm({
         subscription: teacherData.pricing.subscription || 0,
-        normalChat: teacherData.pricing.normalChat || 300,
         premiumChat: teacherData.pricing.premiumChat || 1000,
         liveStream: teacherData.pricing.liveStream || 500
       });
@@ -91,8 +89,8 @@ const TeacherDashboard = () => {
     e.preventDefault();
     if (!user) return;
     try {
-      if (pricingForm.normalChat < 300 || pricingForm.premiumChat < 1000 || pricingForm.liveStream < 500) {
-        toast.error('الأسعار أقل من الحد الأدنى المسموح به (300 للعادي، 1000 للمميز، 500 للبث المباشر)!');
+      if (pricingForm.premiumChat < 1000 || pricingForm.liveStream < 500) {
+        toast.error('الأسعار أقل من الحد الأدنى المسموح به (1000 للمميز، 500 للبث المباشر)!');
         return;
       }
       await supabase.from('teachers').update({ pricing: pricingForm }).eq('id', user.id);
@@ -207,7 +205,6 @@ const TeacherDashboard = () => {
           totalEarnings += amount;
 
           if (data.reason === 'live_stream') liveTotal += amount;
-          else if (data.reason === 'normal_chat') normalChatTotal += amount;
           else if (data.reason === 'premium_chat') premiumChatTotal += amount;
 
           if (data.createdAt) {
@@ -769,7 +766,6 @@ const TeacherDashboard = () => {
                       {[
                         { name: 'اللايف (Live Streams)', value: earningsSummary.total > 0 ? Math.round((earningsSummary.liveStreams / earningsSummary.total) * 100) : 0, color: 'bg-brand-green' },
                         { name: 'الدردشة المميزة', value: earningsSummary.total > 0 ? Math.round((earningsSummary.premiumChats / earningsSummary.total) * 100) : 0, color: 'bg-brand-gold' },
-                        { name: 'الدردشة العادية', value: earningsSummary.total > 0 ? Math.round((earningsSummary.normalChats / earningsSummary.total) * 100) : 0, color: 'bg-blue-500' },
                       ].map((item) => (
                         <div key={item.name}>
                           <div className="flex justify-between text-xs font-bold mb-2">
@@ -899,19 +895,6 @@ const TeacherDashboard = () => {
                 </div>
 
                 <form onSubmit={handleSavePricing} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة المحادثة العادية (الحد الأدنى 300 دج)</label>
-                    <div className="relative">
-                      <input 
-                        type="number" 
-                        min="300"
-                        value={pricingForm.normalChat}
-                        onChange={(e) => setPricingForm({...pricingForm, normalChat: Number(e.target.value)})}
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-brand-green outline-none"
-                      />
-                      <CreditCard className="absolute left-4 top-3 w-5 h-5 text-gray-400" />
-                    </div>
-                  </div>
 
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-2">تسعيرة المحادثة المميزة الأولوية (الحد الأدنى 1000 دج)</label>
