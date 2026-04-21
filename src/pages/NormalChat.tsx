@@ -150,7 +150,7 @@ const NormalChat = () => {
 
       // استدعاء الموديل بالطريقة الصحيحة للمكتبة الجديدة
       const result = await ai.models.generateContent({
-        model: "gemini-1.5-flash", // استخدام 1.5 flash لدعم الصور بسلاسة
+        model: "gemini-2.0-flash", // استخدام 2.0 flash لدعم الصور بسلاسة
         contents: [{ role: 'user', parts: parts }]
       });
 
@@ -160,8 +160,8 @@ const NormalChat = () => {
       const aiMsgData = {
         chatId: AI_CHAT_ID,
         text: aiReply,
-        senderId: 'ai_system',
-        senderName: 'المساعد الذكي (Gemma 2)',
+        senderId: user.id, // Must be user.id to pass RLS and UUID requirements
+        senderName: 'المساعد الذكي (Gemma)',
         isAI: true,
         createdAt: new Date().toISOString()
       };
