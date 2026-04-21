@@ -16,29 +16,53 @@ const NormalChat = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // معرف دردشة ثابت للمساعد الذكي لكل مستخدم
-  const AI_CHAT_ID = `ai_assistant_${user?.id}`;
+  // استخدام المعرف الخاص بالمستخدم كـ chatId للمحادثة الذكية (لضمان كونه UUID صالح)
+  const AI_CHAT_ID = user?.id;
   const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
-  // 1. جلب رسائل المحادثة الدائمة مع المساعد
+  // 1. التأكد من وجود سجل للمحادثة الذكية في جدول chats
   useEffect(() => {
-    if (!user) return;
+    if (!user || !AI_CHAT_ID) return;
 
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('chatId', AI_CHAT_ID)
-        .order('createdAt', { ascending: true });
-      
-      if (data) {
-        setMessages(data);
+    const initAiChat = async () => {
+      try {
+        // التحقق من وجود السجل
+        const { data: existingChat } = await supabase
+          .from('chats')
+          .select('id')
+          .eq('id', AI_CHAT_ID)
+          .single();
+
+        if (!existingChat) {
+          // إنشاء سجل محادثة AI إذا لم يوجد
+          await supabase.from('chats').insert({
+            id: AI_CHAT_ID,
+            participants: [user.id],
+            studentId: user.id,
+            studentName: profile?.name || 'تلميذ',
+            type: 'ai',
+            lastMessage: 'مرحباً بك!',
+            updatedAt: new Date().toISOString()
+          });
+        }
+
+        // جلب الرسائل
+        const { data: initialMessages } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('chatId', AI_CHAT_ID)
+          .order('createdAt', { ascending: true });
+        
+        if (initialMessages) setMessages(initialMessages);
+      } catch (err) {
+        console.error('Chat Init Error:', err);
+      } finally {
+        setLoading(false);
+        setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       }
-      setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     };
 
-    fetchMessages();
+    initAiChat();
 
     // الاشتراك في الرسائل الجديدة لحظياً
     const channel = supabase.channel(`ai_messages_${user.id}`)
@@ -48,15 +72,19 @@ const NormalChat = () => {
         table: 'messages', 
         filter: `chatId=eq.${AI_CHAT_ID}` 
       }, (payload) => {
-        setMessages((prev) => [...prev, payload.new as any]);
+        setMessages((prev) => {
+          // تجنب تكرار الرسائل المحملة مسبقاً
+          if (prev.find(m => m.id === payload.new.id)) return prev;
+          return [...prev, payload.new as any];
+        });
         setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, AI_CHAT_ID]);
+  }, [user, AI_CHAT_ID, profile?.name]);
 
-  // 2. معالجة رفع الملفات (اختياري)
+  // 2. معالجة رفع الملفات
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -75,9 +103,9 @@ const NormalChat = () => {
     reader.readAsDataURL(file);
   };
 
-  // 3. إرسال الرسالة ومعالجة رد Gemma
+  // 3. إرسال الرسالة ومعالجة رد AI (باستخدام مكتبة @google/genai الجديدة)
   const handleSend = async () => {
-    if ((!message.trim() && attachments.length === 0) || !user) return;
+    if ((!message.trim() && attachments.length === 0) || !user || !AI_CHAT_ID) return;
     
     const userMsg = message;
     const currentAttachments = [...attachments];
@@ -97,29 +125,36 @@ const NormalChat = () => {
       };
       await supabase.from('messages').insert(msgData);
 
-      // رد الذكاء الاصطناعي
       setAiTyping(true);
       
       const systemPrompt = `أنت هو المساعد التعليمي الذكي "قما 2" (Gemma 2) لمنصة Learning Tech في الجزائر.
-أنت خبير في المناهج الوزارية والتربوية الجزائرية لجميع الأطوار (ابتدائي، متوسط، ثانوي، جامعي).
+أنت خبير في المناهج الوزارية والتربوية الجزائرية لجميع الأطوار.
+قواعدك: لا تعطِ الحل مباشرة، قدم تلميحات أولاً، وإذا عجز الطالب قدم الحل المفصل حسب المنهج الجزائري.
+تحدث بلهجة جزائرية بيضاء أو عربية مبسطة. ردك نصي فقط ومشجع.`;
 
-قواعدك الصارمة:
-1. عند حل التمارين أو المسائل: لا تعطِ الحل مباشرة أبداً.
-2. ابدأ بتقديم تلميحات ذكية وخطوات توضيحية تشجع الطالب على الحل بنفسه.
-3. إذا طلب الطالب الحل صراحة أو عجز عن الفهم تماماً، قدم له الحل النموذجي المفصل حسب المنهج الجزائري.
-4. تواصل بلهجة جزائرية بيضاء مهذبة أو عربية فصحى مبسطة.
-5. ردك يكون نصياً فقط ومشجعاً للطالب.`;
+      // بناء المحتوى للمكتبة الجديدة @google/genai
+      const parts: any[] = [{ text: systemPrompt }];
+      
+      // إضافة الصور إن وجدت
+      currentAttachments.forEach(att => {
+        parts.push({
+          inlineData: {
+            data: att.inlineData.data,
+            mimeType: att.inlineData.mimeType
+          }
+        });
+      });
 
-      const model = ai.getGenerativeModel({ model: "gemma-2-27b-it" });
-      const promptParts = [
-        systemPrompt,
-        ...currentAttachments,
-        `سؤال التلميذ: ${userMsg}`
-      ];
+      // إضافة سؤال المستخدم
+      parts.push({ text: `سؤال التلميذ: ${userMsg}` });
 
-      const result = await model.generateContent(promptParts);
-      const response = await result.response;
-      const aiReply = response.text();
+      // استدعاء الموديل بالطريقة الصحيحة للمكتبة الجديدة
+      const result = await ai.models.generateContent({
+        model: "gemini-1.5-flash", // استخدام 1.5 flash لدعم الصور بسلاسة
+        contents: [{ role: 'user', parts: parts }]
+      });
+
+      const aiReply = result.text;
 
       // حفظ رد المساعد في قاعدة البيانات
       const aiMsgData = {
@@ -133,8 +168,8 @@ const NormalChat = () => {
       await supabase.from('messages').insert(aiMsgData);
       
     } catch (error) {
-      console.error('Error:', error);
-      toast.error('عذراً، حدث خطأ أثناء معالجة طلبك');
+      console.error('AI Error:', error);
+      toast.error('عذراً، حدث خطأ في معالجة طلبك');
     } finally {
       setAiTyping(false);
     }
@@ -170,7 +205,7 @@ const NormalChat = () => {
       </div>
 
       <div className="bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col h-[650px] border border-gray-100">
-        {/* Messages Display */}
+        {/* Messages */}
         <div className="flex-1 p-6 overflow-y-auto space-y-4 bg-gray-50/50">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
@@ -272,7 +307,7 @@ const NormalChat = () => {
             <button 
               onClick={handleSend}
               disabled={aiTyping || (!message.trim() && attachments.length === 0)}
-              className="p-4 rounded-2xl bg-brand-green text-white transition-all transform active:scale-90 shadow-xl shadow-brand-green/20 disabled:opacity-50 disabled:grayscale transition-all"
+              className="p-4 rounded-2xl bg-brand-green text-white shadow-xl shadow-brand-green/20 disabled:opacity-50 disabled:grayscale transition-all transform active:scale-90"
             >
               <Send className="w-6 h-6" />
             </button>
