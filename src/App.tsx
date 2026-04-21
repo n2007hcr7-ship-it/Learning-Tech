@@ -258,7 +258,7 @@ export default function App() {
           .from('users')
           .select('*')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
         
         if (profileData) {
           setProfile(profileData);
@@ -302,24 +302,24 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
     try {
-      await supabase.from('users').insert(initialProfile);
+      await supabase.from('users').upsert(initialProfile, { onConflict: 'id' });
       if (role === 'teacher') {
-        await supabase.from('teachers').insert({
+        await supabase.from('teachers').upsert({
           id: user.id,
           name: user.user_metadata?.display_name || user.email,
           wilaya: onboardingData.wilaya,
           is_verified: false,
           balance: 0,
-        });
+        }, { onConflict: 'id' });
       } else {
-        await supabase.from('students').insert({
+        await supabase.from('students').upsert({
           id: user.id,
           name: user.user_metadata?.display_name || user.email,
           wilaya: onboardingData.wilaya,
           balance: 0,
           iq_coins: 0,
           is_subscribed: false
-        });
+        }, { onConflict: 'id' });
       }
       setProfile(initialProfile);
       toast.success(`مرحباً بك كـ ${role === 'teacher' ? 'أستاذ' : 'تلميذ'}`);

@@ -31,11 +31,11 @@ const NormalChat = () => {
           .from('chats')
           .select('id')
           .eq('id', AI_CHAT_ID)
-          .single();
+          .maybeSingle();
 
         if (!existingChat) {
           // إنشاء سجل محادثة AI إذا لم يوجد
-          await supabase.from('chats').insert({
+          await supabase.from('chats').upsert({
             id: AI_CHAT_ID,
             participants: [user.id],
             studentId: user.id,
@@ -43,7 +43,7 @@ const NormalChat = () => {
             type: 'ai',
             lastMessage: 'مرحباً بك!',
             updatedAt: new Date().toISOString()
-          });
+          }, { onConflict: 'id' });
         }
 
         // جلب الرسائل

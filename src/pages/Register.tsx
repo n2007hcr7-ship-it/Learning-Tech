@@ -60,7 +60,7 @@ const Register = () => {
       const user = authData.user;
 
       // Create profile in Supabase public.users
-      const { error: userError } = await supabase.from('users').insert({
+      const { error: userError } = await supabase.from('users').upsert({
         id: user.id,
         name: formData.name,
         email: formData.email,
@@ -69,12 +69,12 @@ const Register = () => {
         balance: 0,
         iq_coins: 0,
         iq_coins_monthly: 0
-      });
+      }, { onConflict: 'id' });
       if (userError) throw userError;
 
       // If teacher, create teacher profile
       if (role === 'teacher') {
-        const { error: teacherError } = await supabase.from('teachers').insert({
+        const { error: teacherError } = await supabase.from('teachers').upsert({
           id: user.id,
           name: formData.name,
           wilaya: formData.wilaya,
@@ -84,18 +84,18 @@ const Register = () => {
           rating: 5,
           ccp: '',
           edahabia: ''
-        });
+        }, { onConflict: 'id' });
         if (teacherError) throw teacherError;
       } else {
         // If student, create student profile
-        const { error: studentError } = await supabase.from('students').insert({
+        const { error: studentError } = await supabase.from('students').upsert({
           id: user.id,
           name: formData.name,
           wilaya: formData.wilaya,
           balance: 0,
           iq_coins: 0,
           is_subscribed: false
-        });
+        }, { onConflict: 'id' });
         if (studentError) throw studentError;
       }
 
