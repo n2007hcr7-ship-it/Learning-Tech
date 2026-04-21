@@ -22,7 +22,7 @@ const NormalChat = () => {
 
   // 1. التأكد من وجود سجل للمحادثة الذكية في جدول chats
   useEffect(() => {
-    if (!user || !AI_CHAT_ID) return;
+    if (!user || !AI_CHAT_ID || !profile || profile.needsRole) return;
 
     const initAiChat = async () => {
       try {
@@ -105,7 +105,7 @@ const NormalChat = () => {
 
   // 3. إرسال الرسالة ومعالجة رد AI (باستخدام مكتبة @google/genai الجديدة)
   const handleSend = async () => {
-    if ((!message.trim() && attachments.length === 0) || !user || !AI_CHAT_ID) return;
+    if ((!message.trim() && attachments.length === 0) || !user || !AI_CHAT_ID || !profile || profile.needsRole) return;
     
     const userMsg = message;
     const currentAttachments = [...attachments];
