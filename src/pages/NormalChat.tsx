@@ -146,18 +146,26 @@ const NormalChat = () => {
       // إضافة سؤال المستخدم
       parts.push({ text: `سؤال التلميذ: ${userMsg}` });
 
-      // استدعاء السيرفر الوسيط (Edge Function) لتجاوز حجب الجزائر وحماية المفتاح
-      const { data, error } = await supabase.functions.invoke('chat-gemini', {
-        body: { contents: [{ role: 'user', parts: parts }] }
+      // استدعاء Gemini عبر البروكسي المجاني لتجاوز الحجب الجغرافي دون الحاجة لتدخل المستخدم
+      const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!GEMINI_API_KEY) throw new Error("مفتاح الذكاء الاصطناعي مفقود!");
+
+      const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: parts }] })
       });
 
-      if (error) {
-        console.error("Edge function error:", error);
-        throw error;
+      const data = await response.json();
+      if (!response.ok) {
+        console.error("Proxy error:", data);
+        throw new Error(data.error?.message || "حدث خطأ أثناء التواصل مع الذكاء الاصطناعي");
       }
-      if (data?.error) throw new Error(data.error);
 
-      const aiReply = data.text;
+      const aiReply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       // حفظ رد المساعد في قاعدة البيانات
       const aiMsgData = {
