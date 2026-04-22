@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Send, Clock, X, Plus, Brain, Sparkles, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from '@google/genai';
 import { supabase } from '../supabase';
 import { useAuth } from '../App';
 import { toast } from 'sonner';
@@ -18,7 +17,6 @@ const NormalChat = () => {
 
   // استخدام المعرف الخاص بالمستخدم كـ chatId للمحادثة الذكية (لضمان كونه UUID صالح)
   const AI_CHAT_ID = user?.id;
-  const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
 
   // 1. التأكد من وجود سجل للمحادثة الذكية في جدول chats
   useEffect(() => {
@@ -148,13 +146,18 @@ const NormalChat = () => {
       // إضافة سؤال المستخدم
       parts.push({ text: `سؤال التلميذ: ${userMsg}` });
 
-      // استدعاء الموديل بالطريقة الصحيحة للمكتبة الجديدة
-      const result = await ai.models.generateContent({
-        model: "gemini-2.0-flash", // استخدام 2.0 flash لدعم الصور بسلاسة
-        contents: [{ role: 'user', parts: parts }]
+      // استدعاء السيرفر الوسيط (Edge Function) لتجاوز حجب الجزائر وحماية المفتاح
+      const { data, error } = await supabase.functions.invoke('chat-gemini', {
+        body: { contents: [{ role: 'user', parts: parts }] }
       });
 
-      const aiReply = result.text;
+      if (error) {
+        console.error("Edge function error:", error);
+        throw error;
+      }
+      if (data?.error) throw new Error(data.error);
+
+      const aiReply = data.text;
 
       // حفظ رد المساعد في قاعدة البيانات
       const aiMsgData = {
