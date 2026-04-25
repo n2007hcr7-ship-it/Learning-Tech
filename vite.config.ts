@@ -9,7 +9,6 @@ export default defineConfig(({mode}) => {
     base: '/Learning-Tech/',
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
     resolve: {
       alias: {

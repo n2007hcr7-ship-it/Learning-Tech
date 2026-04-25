@@ -6,48 +6,80 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // التعامل مع طلبات CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { contents } = await req.json();
-    
-    // سحب المفتاح من البيئة (Edge Secrets)
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const { message, imageBase64, imageMimeType } = await req.json();
 
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     if (!GEMINI_API_KEY) {
       throw new Error('مفتاح GEMINI_API_KEY غير متوفر في السيرفر');
     }
 
-    // إرسال الطلب مباشرة إلى سيرفرات جوجل عبر Deno
-    // هذا يحمي المفتاح ويجعل الطلب يظهر كأنه قادم من سيرفر Supabase (لتخطي الحجب الجغرافي)
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ contents }),
-    });
+    const systemPrompt = `أنت هو المساعد التعليمي الذكي "قما 2" (Gemma 2) لمنصة Learning Tech في الجزائر.
+أنت خبير في المناهج الوزارية والتربوية الجزائرية لجميع الأطوار.
+قواعدك: لا تعطِ الحل مباشرة، قدم تلميحات أولاً، وإذا عجز الطالب قدم الحل المفصل حسب المنهج الجزائري.
+تحدث بلهجة جزائرية بيضاء أو عربية مبسطة. ردك نصي فقط ومشجع.`;
 
-    const data = await response.json();
+    const parts: any[] = [{ text: systemPrompt }];
 
-    if (!response.ok) {
-      console.error('Gemini error:', data);
-      throw new Error(data.error?.message || 'حدث خطأ في جلب الرد من Gemini');
+    if (imageBase64 && imageMimeType) {
+      parts.push({ inlineData: { data: imageBase64, mimeType: imageMimeType } });
     }
 
-    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    parts.push({ text: `سؤال التلميذ: ${message || 'انظر للصورة المرفقة'}` });
+
+    const contents = [{ role: 'user', parts }];
+
+    // نجرب النماذج بالترتيب — إذا نفدت حصة الأول ننتقل للتالي
+    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.0-pro'];
+    let lastData: any = null;
+
+    for (const model of modelsToTry) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents }),
+      });
+
+      lastData = await response.json();
+
+      if (response.ok && lastData.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const reply = lastData.candidates[0].content.parts[0].text;
+        console.log(`✅ Gemini (${model}) responded`);
+        return new Response(
+          JSON.stringify({ reply }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const status = lastData?.error?.status || '';
+      if (status !== 'RESOURCE_EXHAUSTED') {
+        console.error(`Model ${model} failed:`, lastData);
+        break;
+      }
+      console.warn(`Model ${model} quota exhausted, trying next...`);
+    }
+
+    // فشلت جميع المحاولات
+    const errStatus = lastData?.error?.status || '';
+    const statusCode = errStatus === 'RESOURCE_EXHAUSTED' ? 429 : 500;
+    const errMsg = errStatus === 'RESOURCE_EXHAUSTED'
+      ? 'quota_exhausted'
+      : (lastData?.error?.message || 'حدث خطأ في Gemini');
 
     return new Response(
-      JSON.stringify({ text: aiText }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    })
+      JSON.stringify({ error: errMsg }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: statusCode }
+    );
+
+  } catch (error: any) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 })

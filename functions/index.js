@@ -727,3 +727,100 @@ exports.createBunnyVideoAuth = onRequest({ secrets: ["BUNNY_API_KEY"], cors: tru
     res.status(500).json({ error: err.message });
   }
 });
+
+// ================================================================
+// 8. geminiChat — Callable HTTPS Function (وسيط Gemini AI)
+// ================================================================
+/**
+ * يُستدعى من الواجهة الأمامية عند إرسال سؤال للمساعد الذكي.
+ * يتولى الخادم استدعاء Gemini API بدلاً من المتصفح لتجاوز الحجب الجغرافي.
+ *
+ * المُدخلات: { message: string, imageBase64?: string, imageMimeType?: string }
+ * المُخرجات: { reply: string }
+ */
+exports.geminiChat = onRequest(
+  { secrets: ["GEMINI_API_KEY"], cors: true },
+  async (req, res) => {
+    // السماح بطلبات CORS المسبقة
+    if (req.method === "OPTIONS") {
+      res.status(204).send("");
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+
+    const { message, imageBase64, imageMimeType } = req.body || {};
+
+    if (!message && !imageBase64) {
+      res.status(400).json({ error: "الرسالة فارغة." });
+      return;
+    }
+
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (!GEMINI_API_KEY) {
+      res.status(500).json({ error: "مفتاح Gemini غير مُهيَّأ على الخادم." });
+      return;
+    }
+
+    const systemPrompt = `أنت هو المساعد التعليمي الذكي "قما 2" (Gemma 2) لمنصة Learning Tech في الجزائر.
+أنت خبير في المناهج الوزارية والتربوية الجزائرية لجميع الأطوار.
+قواعدك: لا تعطِ الحل مباشرة، قدم تلميحات أولاً، وإذا عجز الطالب قدم الحل المفصل حسب المنهج الجزائري.
+تحدث بلهجة جزائرية بيضاء أو عربية مبسطة. ردك نصي فقط ومشجع.`;
+
+    const parts = [{ text: systemPrompt }];
+
+    if (imageBase64 && imageMimeType) {
+      parts.push({ inlineData: { data: imageBase64, mimeType: imageMimeType } });
+    }
+
+    parts.push({ text: `سؤال التلميذ: ${message || "انظر للصورة المرفقة"}` });
+
+    const modelsToTry = ["gemini-1.5-flash", "gemini-1.0-pro"];
+    let lastError = null;
+
+    for (const model of modelsToTry) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      try {
+        const apiRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ role: "user", parts }] }),
+        });
+
+        const data = await apiRes.json();
+
+        if (apiRes.ok && data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          const reply = data.candidates[0].content.parts[0].text;
+          console.log(`✅ Gemini (${model}) responded`);
+          res.status(200).json({ reply });
+          return;
+        }
+
+        lastError = data;
+        const status = data?.error?.status || "";
+        if (status !== "RESOURCE_EXHAUSTED") {
+          console.error(`Gemini model ${model} error:`, data);
+          break;
+        }
+        console.warn(`Model ${model} quota exhausted, trying next...`);
+      } catch (fetchErr) {
+        lastError = fetchErr;
+        console.error(`Fetch error for model ${model}:`, fetchErr);
+        break;
+      }
+    }
+
+    const errStatus = lastError?.error?.status || "";
+    if (errStatus === "RESOURCE_EXHAUSTED") {
+      res.status(429).json({ error: "quota_exhausted", message: "تجاوزنا الحد المجاني لليوم. يرجى المحاولة غداً." });
+      return;
+    }
+    res.status(500).json({
+      error: "internal",
+      message: lastError?.error?.message || "حدث خطأ أثناء التواصل مع الذكاء الاصطناعي."
+    });
+  }
+);

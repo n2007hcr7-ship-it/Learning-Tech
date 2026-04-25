@@ -101,7 +101,7 @@ const NormalChat = () => {
     reader.readAsDataURL(file);
   };
 
-  // 3. إرسال الرسالة ومعالجة رد AI (باستخدام مكتبة @google/genai الجديدة)
+  // 3. إرسال الرسالة ومعالجة رد AI عبر Supabase Edge Function
   const handleSend = async () => {
     if ((!message.trim() && attachments.length === 0) || !user || !AI_CHAT_ID || !profile || profile.needsRole) return;
     
@@ -124,48 +124,24 @@ const NormalChat = () => {
       await supabase.from('messages').insert(msgData);
 
       setAiTyping(true);
-      
-      const systemPrompt = `أنت هو المساعد التعليمي الذكي "قما 2" (Gemma 2) لمنصة Learning Tech في الجزائر.
-أنت خبير في المناهج الوزارية والتربوية الجزائرية لجميع الأطوار.
-قواعدك: لا تعطِ الحل مباشرة، قدم تلميحات أولاً، وإذا عجز الطالب قدم الحل المفصل حسب المنهج الجزائري.
-تحدث بلهجة جزائرية بيضاء أو عربية مبسطة. ردك نصي فقط ومشجع.`;
 
-      // بناء المحتوى للمكتبة الجديدة @google/genai
-      const parts: any[] = [{ text: systemPrompt }];
-      
-      // إضافة الصور إن وجدت
-      currentAttachments.forEach(att => {
-        parts.push({
-          inlineData: {
-            data: att.inlineData.data,
-            mimeType: att.inlineData.mimeType
-          }
-        });
-      });
-
-      // إضافة سؤال المستخدم
-      parts.push({ text: `سؤال التلميذ: ${userMsg}` });
-
-      // استدعاء Gemini عبر البروكسي المجاني لتجاوز الحجب الجغرافي دون الحاجة لتدخل المستخدم
-      const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!GEMINI_API_KEY) throw new Error("مفتاح الذكاء الاصطناعي مفقود!");
-
-      const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
-      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-
-      const response = await fetch(proxyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: parts }] })
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        console.error("Proxy error:", data);
-        throw new Error(data.error?.message || "حدث خطأ أثناء التواصل مع الذكاء الاصطناعي");
+      // استدعاء Supabase Edge Function التي تعمل كوسيط آمن لق Gemini
+      // الخادم يرسل الطلب من منطقة غير محجوبة (تجاوز الحجب الجغرافي للجزائر)
+      const payload: any = { message: userMsg };
+      if (currentAttachments.length > 0) {
+        payload.imageBase64 = currentAttachments[0].inlineData.data;
+        payload.imageMimeType = currentAttachments[0].inlineData.mimeType;
       }
 
-      const aiReply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const { data, error: fnError } = await supabase.functions.invoke('chat-gemini', {
+        body: payload,
+      });
+
+      if (fnError) throw new Error(fnError.message);
+      if (data?.error === 'quota_exhausted') throw new Error('quota_exhausted');
+      if (data?.error) throw new Error(data.error);
+
+      const aiReply = data?.reply || '';
 
       // حفظ رد المساعد في قاعدة البيانات
       const aiMsgData = {
@@ -178,9 +154,13 @@ const NormalChat = () => {
       };
       await supabase.from('messages').insert(aiMsgData);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Error:', error);
-      toast.error('عذراً، حدث خطأ في معالجة طلبك');
+      if (error?.message === 'quota_exhausted') {
+        toast.error('⚠️ تجاوزنا الحد المجاني لليوم. يرجى المحاولة مجدداً بعد ساعة أو غداً.', { duration: 6000 });
+      } else {
+        toast.error('عذراً، حدث خطأ في معالجة طلبك');
+      }
     } finally {
       setAiTyping(false);
     }
