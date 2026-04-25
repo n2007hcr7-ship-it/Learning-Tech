@@ -95,14 +95,18 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 
 -- 8. Policies
 CREATE POLICY "Users can insert self" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update self" ON public.users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can see self" ON public.users FOR SELECT USING (true);
 CREATE POLICY "Teachers can insert self" ON public.teachers FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Teachers can update self" ON public.teachers FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Everyone see teachers" ON public.teachers FOR SELECT USING (true);
 CREATE POLICY "Students can insert self" ON public.students FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Students can update self" ON public.students FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Everyone see students" ON public.students FOR SELECT USING (true);
 CREATE POLICY "Everyone see lessons" ON public.lessons FOR SELECT USING (true);
 CREATE POLICY "Teachers manage lessons" ON public.lessons FOR ALL USING (auth.uid() = "teacherId");
 CREATE POLICY "Users see own chats" ON public.chats FOR SELECT USING (auth.uid() = ANY(participants));
 CREATE POLICY "Users start chats" ON public.chats FOR INSERT WITH CHECK (auth.uid() = ANY(participants));
+CREATE POLICY "Users update own chats" ON public.chats FOR UPDATE USING (auth.uid() = ANY(participants));
 CREATE POLICY "Users see messages" ON public.messages FOR SELECT USING (EXISTS (SELECT 1 FROM public.chats WHERE id = "chatId" AND auth.uid() = ANY(participants)));
 CREATE POLICY "Users send messages" ON public.messages FOR INSERT WITH CHECK (auth.uid() = "senderId");
