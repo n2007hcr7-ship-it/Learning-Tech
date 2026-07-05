@@ -1,0 +1,6 @@
+{
+  "name": "CRM SaaS Platform",
+  "description": "Enterprise-grade multi-tenant CRM SaaS platform featuring Customer Management, Sales Pipelines, Kanban Deal tracking, Invoice generation, Tasks, Activity Timeline, RBAC User permissions, and integrated AI Sales Assistant powered by Gemini API.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

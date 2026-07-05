@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  /* Default Blue Theme Colors */
+  --indigo-50: #eff6ff;
+  --indigo-100: #dbeafe;
+  --indigo-200: #bfdbfe;
+  --indigo-300: #93c5fd;
+  --indigo-400: #60a5fa;
+  --indigo-500: #3b82f6;
+  --indigo-600: #2563eb;
+  --indigo-650: #1d4ed8;
+  --indigo-700: #1d4ed8;
+  --indigo-800: #1e40af;
+  --indigo-900: #1e3a8a;
+  --indigo-950: #172554;
+
+  --blue-50: #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-300: #93c5fd;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #1e3a8a;
+  --blue-950: #172554;
+}
+
+.theme-ceo {
+  /* CEO Green Theme Colors (Emerald/Green shades) */
+  --indigo-50: #ecfdf5;
+  --indigo-100: #d1fae5;
+  --indigo-200: #a7f3d0;
+  --indigo-300: #6ee7b7;
+  --indigo-400: #34d399;
+  --indigo-500: #10b981;
+  --indigo-600: #059669;
+  --indigo-650: #047857;
+  --indigo-700: #047857;
+  --indigo-800: #065f46;
+  --indigo-900: #064e3b;
+  --indigo-950: #022c22;
+
+  --blue-50: #ecfdf5;
+  --blue-100: #d1fae5;
+  --blue-200: #a7f3d0;
+  --blue-300: #6ee7b7;
+  --blue-400: #34d399;
+  --blue-500: #10b981;
+  --blue-600: #059669;
+  --blue-700: #047857;
+  --blue-800: #065f46;
+  --blue-900: #064e3b;
+  --blue-950: #022c22;
+}
+
+@theme {
+  --color-indigo-50: var(--indigo-50);
+  --color-indigo-100: var(--indigo-100);
+  --color-indigo-200: var(--indigo-200);
+  --color-indigo-300: var(--indigo-300);
+  --color-indigo-400: var(--indigo-400);
+  --color-indigo-500: var(--indigo-500);
+  --color-indigo-600: var(--indigo-600);
+  --color-indigo-650: var(--indigo-650);
+  --color-indigo-700: var(--indigo-700);
+  --color-indigo-800: var(--indigo-800);
+  --color-indigo-900: var(--indigo-900);
+  --color-indigo-950: var(--indigo-950);
+
+  --color-blue-50: var(--blue-50);
+  --color-blue-100: var(--blue-100);
+  --color-blue-200: var(--blue-200);
+  --color-blue-300: var(--blue-300);
+  --color-blue-400: var(--blue-400);
+  --color-blue-500: var(--blue-500);
+  --color-blue-600: var(--blue-600);
+  --color-blue-700: var(--blue-700);
+  --color-blue-800: var(--blue-800);
+  --color-blue-900: var(--blue-900);
+  --color-blue-950: var(--blue-950);
+}

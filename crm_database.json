@@ -1,0 +1,46 @@
+{
+  "organizations": [
+    {
+      "id": "org-acme",
+      "name": "My Company",
+      "subdomain": "acme",
+      "industry": "Technology",
+      "plan": "ENTERPRISE",
+      "createdAt": "2026-01-10T08:00:00Z"
+    }
+  ],
+  "users": [
+    {
+      "id": "usr-admin-acme",
+      "organizationId": "org-acme",
+      "firstName": "Admin",
+      "lastName": "User",
+      "email": "admin@mycompany.com",
+      "password": "hashed_password_here",
+      "role": "SUPER_ADMIN",
+      "createdAt": "2026-01-10T08:05:00Z"
+    },
+    {
+      "id": "usr-emp",
+      "organizationId": "org-acme",
+      "firstName": "Employee",
+      "lastName": "One",
+      "email": "employee@mycompany.com",
+      "password": "hashed_password_here",
+      "role": "EMPLOYEE",
+      "createdAt": "2026-01-11T08:00:00Z"
+    }
+  ],
+  "companies": [],
+  "customers": [],
+  "deals": [],
+  "tasks": [],
+  "invoices": [],
+  "payments": [],
+  "notes": [],
+  "activities": [],
+  "notifications": [],
+  "company_settings": [],
+  "cv_evaluations": [],
+  "work_submissions": []
+}
